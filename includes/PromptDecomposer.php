@@ -15,6 +15,9 @@ class PromptDecomposer
     /**
      * Decompose a user prompt into structured sections.
      *
+     * Tries the cheapest available model first, then falls back through
+     * progressively more expensive options until one succeeds.
+     *
      * @return array{sections: array, overall_intent: string, suggested_pattern_ids: string[]}
      */
     public function decompose(string $user_prompt, array $manifest): array
@@ -55,31 +58,53 @@ Rules:
 - If the user describes structural elements like sections/rows/columns without mentioning a specific component, still create a section entry describing the structure but leave pattern_hint and pattern_id empty
 PROMPT;
 
-        $client = $this->get_decomposer_client();
-        $response = $client->generate($system, $user_prompt);
+        // Try each client in cost order; first success wins
+        $clients = $this->get_decomposer_clients();
+        $last_error = null;
 
-        return $this->parse_decomposition($response['content']);
+        foreach ($clients as $client) {
+            try {
+                $response = $client->generate($system, $user_prompt);
+                return $this->parse_decomposition($response['content']);
+            } catch (\Throwable $e) {
+                $last_error = $e;
+                continue;
+            }
+        }
+
+        throw new \RuntimeException(
+            'Decomposition failed: ' . ($last_error?->getMessage() ?? 'no LLM clients available')
+        );
     }
 
     /**
-     * Get the cheapest available LLM client for decomposition.
+     * Build a prioritized list of LLM clients for decomposition,
+     * ordered cheapest-first with the user's default model as final fallback.
+     *
+     * @return LLMClientInterface[]
      */
-    private function get_decomposer_client(): LLMClientInterface
+    private function get_decomposer_clients(): array
     {
         $settings = Plugin::get_settings();
         $has_anthropic = defined('TAIPB_API_KEY') || !empty($settings['api_key']);
         $has_openai = defined('TAIPB_OPENAI_API_KEY') || !empty($settings['openai_api_key']);
 
+        $clients = [];
+
+        // Cheapest Anthropic model
         if ($has_anthropic) {
-            return new ClaudeClient('claude-haiku-4-5-20251001');
+            $clients[] = new ClaudeClient('claude-haiku-4-5-20251001');
         }
 
+        // Cheapest OpenAI model
         if ($has_openai) {
-            return new OpenAIClient('gpt-4o-mini');
+            $clients[] = new OpenAIClient('gpt-4o-mini');
         }
 
-        // Fall back to user's default model
-        return LLMClientFactory::create();
+        // User's configured default model as final fallback
+        $clients[] = LLMClientFactory::create();
+
+        return $clients;
     }
 
     /**

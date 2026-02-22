@@ -30,16 +30,19 @@ add_filter('admin_memory_limit', function () {
 });
 
 // Prevent WordPress from running do_blocks()/parse_blocks() on post
-// content during REST API responses. The block editor only needs the raw
-// markup (delivered via `content.raw`). The rendered HTML (`content.rendered`)
-// triggers do_blocks() which calls parse_blocks() — on large posts this
-// can exhaust PHP memory. By returning the raw content unprocessed, we
-// skip the expensive block parsing entirely for editor REST requests.
-add_action('rest_api_init', function () {
-    // Remove do_blocks from the_content filter only during REST requests
-    // that serve the block editor (which reads content.raw, not rendered).
-    remove_filter('the_content', 'do_blocks', 9);
-});
+// content during block editor REST requests. The block editor only needs
+// the raw markup (delivered via `content.raw`). The rendered HTML
+// (`content.rendered`) triggers do_blocks() which calls parse_blocks() —
+// on large posts this can exhaust PHP memory.
+//
+// Scoped to `context=edit` requests only, so non-editor REST consumers
+// (headless frontends, custom integrations) still get fully rendered HTML.
+add_filter('rest_pre_dispatch', function ($result, $server, $request) {
+    if ($request->get_param('context') === 'edit') {
+        remove_filter('the_content', 'do_blocks', 9);
+    }
+    return $result;
+}, 10, 3);
 
 // Composer autoloader
 if (file_exists(TAIPB_PLUGIN_DIR . 'vendor/autoload.php')) {
