@@ -3,19 +3,21 @@ import { useSelect, useDispatch } from '@wordpress/data';
 import { STORE_NAME } from '../store';
 
 export default function PromptInput({ postType, postId }) {
-    const { prompt, isGenerating, isMatching, isAnalyzing } = useSelect(
+    const { prompt, isGenerating, isMatching, isAnalyzing, isStructuring, isAssembling } = useSelect(
         (select) => ({
             prompt: select(STORE_NAME).getPrompt(),
             isGenerating: select(STORE_NAME).isGenerating(),
             isMatching: select(STORE_NAME).isMatching(),
             isAnalyzing: select(STORE_NAME).isAnalyzing(),
+            isStructuring: select(STORE_NAME).isStructuring(),
+            isAssembling: select(STORE_NAME).isAssembling(),
         }),
         []
     );
 
     const { setPrompt, checkMatches } = useDispatch(STORE_NAME);
 
-    const isBusy = isGenerating || isMatching || isAnalyzing;
+    const isBusy = isGenerating || isMatching || isAnalyzing || isStructuring || isAssembling;
 
     const handleGenerate = () => {
         if (!prompt.trim() || isBusy) return;
@@ -32,9 +34,13 @@ export default function PromptInput({ postType, postId }) {
         ? 'Finding patterns...'
         : isAnalyzing
             ? 'Analyzing...'
-            : isGenerating
-                ? 'Generating...'
-                : 'Generate Layout';
+            : isStructuring
+                ? 'Building structure...'
+                : isAssembling
+                    ? 'Assembling...'
+                    : isGenerating
+                        ? 'Generating...'
+                        : 'Generate Layout';
 
     return (
         <div className="taipb-prompt-input">

@@ -3,34 +3,56 @@ import { useSelect, useDispatch } from '@wordpress/data';
 import { STORE_NAME } from '../store';
 
 export default function LayoutPlanPanel({ postType, postId }) {
-    const { decomposition, prompt, isGenerating, isAnalyzing } = useSelect(
+    const {
+        decomposition,
+        prompt,
+        isGenerating,
+        isAnalyzing,
+        isStructuring,
+        generationMode,
+        blockTree,
+    } = useSelect(
         (select) => ({
             decomposition: select(STORE_NAME).getDecomposition(),
             prompt: select(STORE_NAME).getPrompt(),
             isGenerating: select(STORE_NAME).isGenerating(),
             isAnalyzing: select(STORE_NAME).isAnalyzing(),
+            isStructuring: select(STORE_NAME).isStructuring(),
+            generationMode: select(STORE_NAME).getGenerationMode(),
+            blockTree: select(STORE_NAME).getBlockTree(),
         }),
         []
     );
 
-    const { setDecomposition, analyzePatterns, generateWithPatterns } =
-        useDispatch(STORE_NAME);
+    const {
+        setDecomposition,
+        analyzePatterns,
+        generateWithPatterns,
+        generateStructure,
+    } = useDispatch(STORE_NAME);
 
-    if (!decomposition || !decomposition.sections?.length) {
+    // Hide if no decomposition, or if block tree is already generated (showing StructureReviewPanel)
+    if (!decomposition || !decomposition.sections?.length || blockTree) {
         return null;
     }
 
-    const isBusy = isGenerating || isAnalyzing;
+    const isBusy = isGenerating || isAnalyzing || isStructuring;
 
     const handleConfirm = () => {
-        const patternIds = decomposition.sections
-            .map((s) => s.pattern_id)
-            .filter(Boolean);
-
-        if (patternIds.length > 0) {
-            analyzePatterns(prompt, postType, postId, patternIds);
+        if (generationMode === 'multi-step') {
+            // Multi-step: generate block tree structure
+            generateStructure(prompt, postType, postId);
         } else {
-            generateWithPatterns(prompt, postType, postId, []);
+            // Direct mode: go through pattern analysis → generate
+            const patternIds = decomposition.sections
+                .map((s) => s.pattern_id)
+                .filter(Boolean);
+
+            if (patternIds.length > 0) {
+                analyzePatterns(prompt, postType, postId, patternIds);
+            } else {
+                generateWithPatterns(prompt, postType, postId, []);
+            }
         }
     };
 
@@ -120,7 +142,13 @@ export default function LayoutPlanPanel({ postType, postId }) {
                     isBusy={isBusy}
                     className="taipb-layout-plan-confirm"
                 >
-                    {isBusy ? 'Processing...' : 'Generate from this plan'}
+                    {isBusy
+                        ? isStructuring
+                            ? 'Building structure...'
+                            : 'Processing...'
+                        : generationMode === 'multi-step'
+                            ? 'Build block structure'
+                            : 'Generate from this plan'}
                 </Button>
                 <Button
                     variant="tertiary"

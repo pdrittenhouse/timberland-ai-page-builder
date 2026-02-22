@@ -137,6 +137,63 @@ class RestController
             ],
         ]);
 
+        register_rest_route(self::NAMESPACE, '/structure', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_structure'],
+            'permission_callback' => [$this, 'can_edit'],
+            'args' => [
+                'prompt' => [
+                    'required' => true,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_textarea_field',
+                ],
+                'decomposition' => [
+                    'required' => true,
+                    'type' => 'object',
+                ],
+                'use_patterns' => [
+                    'required' => false,
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'string',
+                    ],
+                ],
+                'model' => [
+                    'required' => false,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
+            ],
+        ]);
+
+        register_rest_route(self::NAMESPACE, '/assemble', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_assemble'],
+            'permission_callback' => [$this, 'can_edit'],
+            'args' => [
+                'block_tree' => [
+                    'required' => true,
+                    'type' => 'object',
+                ],
+                'prompt' => [
+                    'required' => false,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_textarea_field',
+                ],
+                'post_id' => [
+                    'required' => false,
+                    'type' => 'integer',
+                    'sanitize_callback' => 'absint',
+                ],
+                'post_type' => [
+                    'required' => false,
+                    'type' => 'string',
+                    'default' => 'page',
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
+            ],
+        ]);
+
         register_rest_route(self::NAMESPACE, '/history', [
             'methods' => 'GET',
             'callback' => [$this, 'handle_get_history'],
@@ -632,6 +689,162 @@ class RestController
                 'error' => $e->getMessage(),
             ], 200);
         }
+    }
+
+    /**
+     * POST /structure — Generate a JSON block tree from a confirmed layout plan.
+     * Step 2 of the multi-step pipeline: LLM outputs structured JSON, not markup.
+     */
+    public function handle_structure(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
+    {
+        $prompt = $request->get_param('prompt');
+        $decomposition = $request->get_param('decomposition');
+        $use_patterns = $request->get_param('use_patterns') ?? [];
+        $model = $request->get_param('model');
+
+        if (empty(trim($prompt))) {
+            return new \WP_Error('taipb_empty_prompt', 'Prompt cannot be empty.', ['status' => 400]);
+        }
+
+        if (empty($decomposition['sections'])) {
+            return new \WP_Error('taipb_no_sections', 'Decomposition must contain sections.', ['status' => 400]);
+        }
+
+        try {
+            $store = Plugin::get_manifest_store();
+            $manifest = $store->get();
+
+            // Build the simplified structure prompt
+            $prompt_builder = new StructurePromptBuilder($manifest);
+            $system_prompt = $prompt_builder->build($prompt, $decomposition, $use_patterns);
+
+            // Call LLM
+            $client = LLMClientFactory::create($model);
+            $api_response = $client->generate($system_prompt, $prompt);
+
+            // Parse the JSON block tree from the response
+            $block_tree = $this->parse_block_tree($api_response['content']);
+
+            if (empty($block_tree['blocks'])) {
+                return new \WP_Error(
+                    'taipb_invalid_structure',
+                    'LLM returned an invalid block tree. Please try again.',
+                    ['status' => 422]
+                );
+            }
+
+            return new \WP_REST_Response([
+                'block_tree' => $block_tree,
+                'api_response' => [
+                    'model' => $api_response['model'],
+                    'input_tokens' => $api_response['input_tokens'],
+                    'output_tokens' => $api_response['output_tokens'],
+                ],
+            ], 200);
+        } catch (\RuntimeException $e) {
+            $status = str_contains($e->getMessage(), 'rate limit') ? 429 : 500;
+            $status = str_contains($e->getMessage(), 'API key') ? 401 : $status;
+
+            return new \WP_Error('taipb_error', $e->getMessage(), ['status' => $status]);
+        }
+    }
+
+    /**
+     * POST /assemble — Convert a JSON block tree into valid block markup.
+     * Step 3 of the multi-step pipeline: pure PHP, no LLM call.
+     */
+    public function handle_assemble(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
+    {
+        $block_tree = $request->get_param('block_tree');
+        $prompt = $request->get_param('prompt') ?? '';
+        $post_id = $request->get_param('post_id');
+        $post_type = $request->get_param('post_type') ?? 'page';
+
+        if (empty($block_tree['blocks'])) {
+            return new \WP_Error('taipb_empty_tree', 'Block tree must contain blocks.', ['status' => 400]);
+        }
+
+        try {
+            $store = Plugin::get_manifest_store();
+            $manifest = $store->get();
+
+            // Assemble markup from block tree
+            $assembler = new MarkupAssembler($manifest);
+            $markup = $assembler->assemble($block_tree);
+
+            // Validate the assembled markup
+            $validator = new MarkupValidator($manifest);
+            $validation = $validator->validate($markup);
+
+            // Save to history if prompt is provided
+            if (!empty($prompt)) {
+                $this->save_assembly_history(
+                    get_current_user_id(),
+                    $prompt,
+                    $markup,
+                    $post_id,
+                    $post_type,
+                    $validation
+                );
+            }
+
+            return new \WP_REST_Response([
+                'markup' => $markup,
+                'validation' => $validation,
+            ], 200);
+        } catch (\Throwable $e) {
+            return new \WP_Error('taipb_assemble_error', $e->getMessage(), ['status' => 500]);
+        }
+    }
+
+    /**
+     * Parse a JSON block tree from LLM output, stripping markdown fences.
+     */
+    private function parse_block_tree(string $raw): array
+    {
+        $raw = preg_replace('/^```(?:json)?\s*\n?/i', '', trim($raw));
+        $raw = preg_replace('/\n?```\s*$/', '', $raw);
+
+        $parsed = json_decode(trim($raw), true);
+
+        if (!is_array($parsed)) {
+            return ['blocks' => []];
+        }
+
+        // Support both {"blocks": [...]} and bare [...]
+        if (isset($parsed['blocks'])) {
+            return $parsed;
+        }
+
+        if (isset($parsed[0])) {
+            return ['blocks' => $parsed];
+        }
+
+        return ['blocks' => []];
+    }
+
+    /**
+     * Save an assembly result to the history table.
+     */
+    private function save_assembly_history(int $user_id, string $prompt, string $markup, ?int $post_id, string $post_type, array $validation): void
+    {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'taipb_history';
+
+        $wpdb->insert($table_name, [
+            'user_id' => $user_id,
+            'prompt' => $prompt,
+            'generated_markup' => $markup,
+            'post_id' => $post_id,
+            'post_type' => $post_type,
+            'model' => 'assembled',
+            'input_tokens' => 0,
+            'output_tokens' => 0,
+            'validation_result' => wp_json_encode($validation),
+            'created_at' => current_time('mysql', true),
+        ], [
+            '%d', '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s', '%s',
+        ]);
     }
 
     /**

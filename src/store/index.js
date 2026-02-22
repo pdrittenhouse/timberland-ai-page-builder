@@ -6,14 +6,19 @@ const STORE_NAME = 'timberland-ai-page-builder';
 const DEFAULT_STATE = {
     prompt: '',
     selectedModel: window.taipbSettings?.defaultModel || '',
+    generationMode: 'multi-step', // 'multi-step' or 'direct'
     isGenerating: false,
     isMatching: false,
     isAnalyzing: false,
+    isStructuring: false,
+    isAssembling: false,
     patternMatches: [],
     selectedPatterns: [],
     clarificationQuestions: [],
     clarificationAnswers: {},
     decomposition: null,
+    blockTree: null,
+    structureApiResponse: null,
     generatedMarkup: '',
     validationResult: null,
     apiResponse: null,
@@ -79,6 +84,30 @@ const actions = {
         return { type: 'CLEAR_DECOMPOSITION' };
     },
 
+    setGenerationMode(mode) {
+        return { type: 'SET_GENERATION_MODE', mode };
+    },
+
+    setBlockTree(blockTree) {
+        return { type: 'SET_BLOCK_TREE', blockTree };
+    },
+
+    clearBlockTree() {
+        return { type: 'CLEAR_BLOCK_TREE' };
+    },
+
+    setStructuring(isStructuring) {
+        return { type: 'SET_STRUCTURING', isStructuring };
+    },
+
+    setAssembling(isAssembling) {
+        return { type: 'SET_ASSEMBLING', isAssembling };
+    },
+
+    setStructureApiResponse(apiResponse) {
+        return { type: 'SET_STRUCTURE_API_RESPONSE', apiResponse };
+    },
+
     setResult(markup, validation, apiResponse) {
         return {
             type: 'SET_RESULT',
@@ -105,21 +134,24 @@ const actions = {
     },
 
     /**
-     * Step 1: Try LLM decomposition first, fall back to keyword matching.
-     * If decomposition returns sections, store them and let LayoutPlanPanel render.
-     * Otherwise, fall through to keyword-based matching.
+     * Step 1: Route based on generation mode.
+     * Multi-step: decompose → layout plan → structure → assemble → preview
+     * Direct: keyword match → clarify → generate → preview
      */
     checkMatches(prompt, postType, postId) {
-        return async ({ dispatch }) => {
+        return async ({ dispatch, select: storeSelect }) => {
             dispatch.setMatching(true);
             dispatch.setError(null);
             dispatch.clearMatches();
             dispatch.clearClarification();
             dispatch.clearResult();
             dispatch.clearDecomposition();
+            dispatch.clearBlockTree();
 
-            try {
-                // Try LLM-based decomposition first
+            const mode = storeSelect.getGenerationMode();
+
+            if (mode === 'multi-step') {
+                // Multi-step: always start with decomposition
                 try {
                     const decomp = await apiFetch({
                         path: '/taipb/v1/decompose',
@@ -127,17 +159,43 @@ const actions = {
                         data: { prompt },
                     });
 
-                    if (decomp.has_sections && decomp.decomposition?.sections?.length > 0) {
-                        // Decomposition succeeded — show layout plan for user review
+                    if (
+                        decomp.has_sections &&
+                        decomp.decomposition?.sections?.length > 0
+                    ) {
                         dispatch.setDecomposition(decomp.decomposition);
                         dispatch.setMatching(false);
                         return;
                     }
                 } catch {
-                    // Decomposition failed — fall through to keyword matching
+                    // Decomposition failed — fall through to direct mode
+                }
+            }
+
+            // Direct mode (or multi-step fallback): keyword matching
+            try {
+                // Try LLM-based decomposition first even in direct mode
+                if (mode === 'direct') {
+                    try {
+                        const decomp = await apiFetch({
+                            path: '/taipb/v1/decompose',
+                            method: 'POST',
+                            data: { prompt },
+                        });
+
+                        if (
+                            decomp.has_sections &&
+                            decomp.decomposition?.sections?.length > 0
+                        ) {
+                            dispatch.setDecomposition(decomp.decomposition);
+                            dispatch.setMatching(false);
+                            return;
+                        }
+                    } catch {
+                        // Decomposition failed — fall through to keyword matching
+                    }
                 }
 
-                // Keyword-based matching fallback
                 const result = await apiFetch({
                     path: '/taipb/v1/match',
                     method: 'POST',
@@ -147,13 +205,10 @@ const actions = {
                 if (result.has_matches && result.matches.length > 0) {
                     const matches = result.matches;
 
-                    // Collect all high-scoring matches (score >= 8)
                     const strongMatches = matches.filter(
                         (m) => m.score >= 8
                     );
 
-                    // Single dominant match: exactly 1 match, or top score >= 8
-                    // and >= 1.5x the runner-up
                     const singleDominant =
                         matches.length === 1 ||
                         (matches[0].score >= 8 &&
@@ -162,7 +217,6 @@ const actions = {
                                     matches[1].score * 1.5));
 
                     if (singleDominant && strongMatches.length <= 1) {
-                        // Auto-select single pattern
                         dispatch.setMatching(false);
                         dispatch.analyzePatterns(prompt, postType, postId, [
                             matches[0].id,
@@ -171,7 +225,6 @@ const actions = {
                     }
 
                     if (strongMatches.length >= 2) {
-                        // Auto-select all strong matches (multi-pattern)
                         dispatch.setMatching(false);
                         dispatch.analyzePatterns(
                             prompt,
@@ -182,7 +235,6 @@ const actions = {
                         return;
                     }
 
-                    // Show match selection UI
                     dispatch.setPatternMatches(matches);
                 } else {
                     dispatch.generateWithPatterns(
@@ -405,6 +457,140 @@ const actions = {
         };
     },
 
+    /**
+     * Multi-step Step 2: Generate a JSON block tree from the confirmed layout plan.
+     * Calls the /structure endpoint which uses a simplified LLM prompt.
+     */
+    generateStructure(prompt, postType, postId) {
+        return async ({ dispatch, select: storeSelect }) => {
+            dispatch.setStructuring(true);
+            dispatch.setError(null);
+
+            const decomposition = storeSelect.getDecomposition();
+            if (!decomposition?.sections?.length) {
+                dispatch.setError(
+                    'No layout plan available. Please start over.'
+                );
+                dispatch.setStructuring(false);
+                return;
+            }
+
+            const usePatterns = decomposition.suggested_pattern_ids || [];
+            const model = storeSelect.getModel();
+
+            try {
+                const data = {
+                    prompt,
+                    decomposition,
+                    use_patterns: usePatterns,
+                };
+                if (model) {
+                    data.model = model;
+                }
+
+                const result = await apiFetch({
+                    path: '/taipb/v1/structure',
+                    method: 'POST',
+                    data,
+                });
+
+                if (result.block_tree?.blocks?.length > 0) {
+                    dispatch.setBlockTree(result.block_tree);
+                    if (result.api_response) {
+                        dispatch.setStructureApiResponse(result.api_response);
+                    }
+                } else {
+                    // Structure call returned empty — fall back to direct generation
+                    dispatch.setError(
+                        'Structure generation returned no blocks. Falling back to direct generation...'
+                    );
+                    dispatch.generateWithPatterns(
+                        prompt,
+                        postType,
+                        postId,
+                        usePatterns
+                    );
+                }
+            } catch (err) {
+                const message =
+                    err?.message ||
+                    err?.data?.message ||
+                    'Structure generation failed.';
+
+                // Fall back to direct generation
+                dispatch.setError(
+                    `${message} Falling back to direct generation...`
+                );
+                dispatch.generateWithPatterns(
+                    prompt,
+                    postType,
+                    postId,
+                    usePatterns
+                );
+            } finally {
+                dispatch.setStructuring(false);
+            }
+        };
+    },
+
+    /**
+     * Multi-step Step 3: Assemble a block tree into valid markup.
+     * Calls the /assemble endpoint (PHP only, no LLM).
+     */
+    assembleMarkup(postType, postId) {
+        return async ({ dispatch, select: storeSelect }) => {
+            dispatch.setAssembling(true);
+            dispatch.setError(null);
+
+            const blockTree = storeSelect.getBlockTree();
+            const prompt = storeSelect.getPrompt();
+
+            if (!blockTree?.blocks?.length) {
+                dispatch.setError('No block tree to assemble.');
+                dispatch.setAssembling(false);
+                return;
+            }
+
+            try {
+                const result = await apiFetch({
+                    path: '/taipb/v1/assemble',
+                    method: 'POST',
+                    data: {
+                        block_tree: blockTree,
+                        prompt,
+                        post_id: postId || null,
+                        post_type: postType || 'page',
+                    },
+                });
+
+                // Combine structure + assembly token usage for display
+                const structureResponse = storeSelect.getStructureApiResponse();
+                const combinedResponse = structureResponse
+                    ? {
+                          model: structureResponse.model,
+                          input_tokens: structureResponse.input_tokens,
+                          output_tokens: structureResponse.output_tokens,
+                      }
+                    : { model: 'assembled', input_tokens: 0, output_tokens: 0 };
+
+                dispatch.setResult(
+                    result.markup,
+                    result.validation,
+                    combinedResponse
+                );
+            } catch (err) {
+                const message =
+                    err?.message ||
+                    err?.data?.message ||
+                    'Assembly failed. Please try again.';
+                dispatch.setError(message);
+            } finally {
+                dispatch.setAssembling(false);
+                dispatch.clearDecomposition();
+            }
+        };
+    },
+
     fetchHistory(postId) {
         return async ({ dispatch }) => {
             dispatch.setLoadingHistory(true);
@@ -492,6 +678,24 @@ const reducer = (state = DEFAULT_STATE, action) => {
         case 'CLEAR_DECOMPOSITION':
             return { ...state, decomposition: null };
 
+        case 'SET_GENERATION_MODE':
+            return { ...state, generationMode: action.mode };
+
+        case 'SET_BLOCK_TREE':
+            return { ...state, blockTree: action.blockTree };
+
+        case 'CLEAR_BLOCK_TREE':
+            return { ...state, blockTree: null, structureApiResponse: null };
+
+        case 'SET_STRUCTURING':
+            return { ...state, isStructuring: action.isStructuring };
+
+        case 'SET_ASSEMBLING':
+            return { ...state, isAssembling: action.isAssembling };
+
+        case 'SET_STRUCTURE_API_RESPONSE':
+            return { ...state, structureApiResponse: action.apiResponse };
+
         case 'SET_RESULT':
             return {
                 ...state,
@@ -527,14 +731,19 @@ const reducer = (state = DEFAULT_STATE, action) => {
 const selectors = {
     getPrompt: (state) => state.prompt,
     getModel: (state) => state.selectedModel,
+    getGenerationMode: (state) => state.generationMode,
     isGenerating: (state) => state.isGenerating,
     isMatching: (state) => state.isMatching,
     isAnalyzing: (state) => state.isAnalyzing,
+    isStructuring: (state) => state.isStructuring,
+    isAssembling: (state) => state.isAssembling,
     getPatternMatches: (state) => state.patternMatches,
     getSelectedPatterns: (state) => state.selectedPatterns,
     getClarificationQuestions: (state) => state.clarificationQuestions,
     getClarificationAnswers: (state) => state.clarificationAnswers,
     getDecomposition: (state) => state.decomposition,
+    getBlockTree: (state) => state.blockTree,
+    getStructureApiResponse: (state) => state.structureApiResponse,
     getGeneratedMarkup: (state) => state.generatedMarkup,
     getValidationResult: (state) => state.validationResult,
     getApiResponse: (state) => state.apiResponse,

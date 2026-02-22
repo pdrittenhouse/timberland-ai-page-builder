@@ -314,3 +314,111 @@
     justify-content: center;
     font-size: 12px;
 }
+
+/* Generation mode toggle */
+.taipb-mode-toggle {
+    margin-bottom: 12px;
+}
+
+.taipb-mode-toggle .components-toggle-control {
+    margin-bottom: 0;
+}
+
+/* Structure review panel */
+.taipb-structure-review {
+    margin: 16px 0;
+    padding: 12px;
+    background: #f0f0fa;
+    border: 1px solid #c0c0d8;
+    border-radius: 4px;
+}
+
+.taipb-structure-review-heading {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 12px;
+}
+
+.taipb-structure-tree {
+    margin-bottom: 12px;
+}
+
+.taipb-block-node {
+    margin-bottom: 4px;
+    border-left: 2px solid #ddd;
+    padding-left: 8px;
+}
+
+.taipb-block-node--depth-0 {
+    border-left-color: #007cba;
+}
+
+.taipb-block-node--depth-1 {
+    border-left-color: #00a0d2;
+}
+
+.taipb-block-node--depth-2 {
+    border-left-color: #72aee6;
+}
+
+.taipb-block-node--depth-3 {
+    border-left-color: #a7aaad;
+}
+
+.taipb-block-node-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+}
+
+.taipb-block-node-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #1e1e1e;
+    font-family: monospace;
+}
+
+.taipb-block-node-meta {
+    font-size: 11px;
+    color: #757575;
+    background: #e8e8e8;
+    padding: 1px 5px;
+    border-radius: 2px;
+}
+
+.taipb-block-node-fields {
+    padding: 4px 0 8px;
+}
+
+.taipb-block-node-fields .components-base-control {
+    margin-bottom: 6px;
+}
+
+.taipb-block-node-fields .components-base-control__label {
+    font-size: 11px;
+    text-transform: capitalize;
+}
+
+.taipb-block-node-fields .components-text-control__input,
+.taipb-block-node-fields .components-textarea-control__input {
+    font-size: 12px;
+}
+
+.taipb-block-node-children,
+.taipb-block-node-innerblocks {
+    margin-left: 4px;
+}
+
+.taipb-structure-review-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.taipb-structure-review-actions .components-button {
+    width: 100%;
+    justify-content: center;
+    font-size: 12px;
+}
