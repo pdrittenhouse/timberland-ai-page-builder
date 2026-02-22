@@ -1,0 +1,246 @@
+.taipb-prompt-input {
+    margin-bottom: 16px;
+}
+
+.taipb-generate-button {
+    width: 100%;
+    justify-content: center;
+    margin-top: 8px;
+}
+
+.taipb-preview-panel {
+    margin-top: 16px;
+}
+
+.taipb-validation {
+    margin-bottom: 12px;
+}
+
+.taipb-validation-errors {
+    margin: 8px 0;
+    padding-left: 16px;
+    color: #cc1818;
+    font-size: 12px;
+}
+
+.taipb-validation-warnings {
+    margin: 8px 0;
+    padding-left: 16px;
+    color: #996800;
+    font-size: 12px;
+}
+
+.taipb-visual-preview {
+    margin: 12px 0;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.taipb-token-usage {
+    margin: 8px 0;
+    padding: 8px;
+    background: #f0f0f0;
+    border-radius: 2px;
+    font-size: 12px;
+}
+
+.taipb-markup-preview {
+    margin-top: 12px;
+}
+
+.taipb-markup-preview summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: #757575;
+}
+
+.taipb-markup-code {
+    margin-top: 8px;
+    padding: 8px;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-size: 11px;
+    line-height: 1.4;
+    border-radius: 2px;
+    max-height: 200px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.taipb-insert-buttons {
+    margin-top: 16px;
+}
+
+.taipb-insert-buttons .components-button-group {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.taipb-insert-buttons .components-button-group .components-button {
+    flex: 1;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.taipb-insert-notice {
+    margin-top: 8px;
+}
+
+.taipb-history-loading {
+    text-align: center;
+    padding: 16px;
+}
+
+.taipb-history-empty {
+    color: #757575;
+    font-style: italic;
+    font-size: 13px;
+}
+
+.taipb-history-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.taipb-history-item:last-child {
+    border-bottom: none;
+}
+
+.taipb-history-prompt {
+    font-size: 13px;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.taipb-history-meta {
+    font-size: 11px;
+    color: #757575;
+    margin-top: 4px;
+}
+
+/* Pattern match confirmation */
+.taipb-pattern-match {
+    margin: 16px 0;
+    padding: 12px;
+    background: #f0f6fc;
+    border: 1px solid #c8d8e8;
+    border-radius: 4px;
+}
+
+.taipb-pattern-match-heading {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 12px;
+}
+
+.taipb-pattern-match-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.taipb-pattern-match-item {
+    border: 1px solid #ddd;
+}
+
+.taipb-pattern-match-item .components-card__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+}
+
+.taipb-pattern-match-title {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.taipb-pattern-match-type {
+    font-size: 11px;
+    color: #757575;
+    background: #e8e8e8;
+    padding: 2px 6px;
+    border-radius: 2px;
+    text-transform: capitalize;
+}
+
+.taipb-pattern-match-item .components-card__body {
+    padding: 8px 12px;
+}
+
+.taipb-pattern-use-button {
+    width: 100%;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.taipb-pattern-match-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.taipb-pattern-skip-button {
+    width: 100%;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.taipb-pattern-cancel-button {
+    width: 100%;
+    justify-content: center;
+    font-size: 12px;
+}
+
+/* Clarification panel */
+.taipb-clarification {
+    margin: 16px 0;
+    padding: 12px;
+    background: #fef8ee;
+    border: 1px solid #e8d5b5;
+    border-radius: 4px;
+}
+
+.taipb-clarification-heading {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 12px;
+}
+
+.taipb-clarification-question {
+    margin-bottom: 12px;
+}
+
+.taipb-clarification-question .components-radio-control__label {
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+
+.taipb-clarification-question .components-radio-control__option {
+    font-size: 12px;
+}
+
+.taipb-clarification-text-input {
+    margin: 4px 0 8px 24px;
+}
+
+.taipb-clarification-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.taipb-clarification-actions .components-button {
+    flex: 1;
+    justify-content: center;
+    font-size: 12px;
+}

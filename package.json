@@ -1,0 +1,13 @@
+{
+    "name": "timberland-ai-page-builder",
+    "version": "1.0.0",
+    "description": "Gutenberg AI page layout generator",
+    "author": "P.D. Rittenhouse",
+    "scripts": {
+        "build": "wp-scripts build",
+        "start": "wp-scripts start"
+    },
+    "devDependencies": {
+        "@wordpress/scripts": "^27.0.0"
+    }
+}
