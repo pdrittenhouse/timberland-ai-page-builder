@@ -1,9 +1,10 @@
-import { useMemo } from '@wordpress/element';
-import { Notice, __experimentalText as Text } from '@wordpress/components';
+import { useMemo, useState } from '@wordpress/element';
+import { Button, Notice, __experimentalText as Text } from '@wordpress/components';
 import { useSelect } from '@wordpress/data';
 import { BlockPreview } from '@wordpress/block-editor';
 import { parse } from '@wordpress/blocks';
 import { STORE_NAME } from '../store';
+import { cleanMarkup } from '../utils/blockParser';
 
 export default function PreviewPanel() {
     const { markup, validation, apiResponse, error } = useSelect(
@@ -16,10 +17,12 @@ export default function PreviewPanel() {
         []
     );
 
+    const [showVisualPreview, setShowVisualPreview] = useState(false);
+
     const blocks = useMemo(() => {
-        if (!markup) return [];
+        if (!markup || !showVisualPreview) return [];
         try {
-            return parse(markup).filter(
+            return parse(cleanMarkup(markup)).filter(
                 (block) =>
                     block.name !== 'core/freeform' ||
                     block.attributes.content?.trim()
@@ -27,7 +30,13 @@ export default function PreviewPanel() {
         } catch {
             return [];
         }
-    }, [markup]);
+    }, [markup, showVisualPreview]);
+
+    // Limit blocks sent to BlockPreview to avoid memory exhaustion
+    // in the WordPress block parser during server-side rendering.
+    const MAX_PREVIEW_BLOCKS = 5;
+    const previewBlocks = blocks.slice(0, MAX_PREVIEW_BLOCKS);
+    const previewTruncated = blocks.length > MAX_PREVIEW_BLOCKS;
 
     if (error) {
         return (
@@ -73,13 +82,29 @@ export default function PreviewPanel() {
                 </div>
             )}
 
-            {/* Live visual preview */}
-            {blocks.length > 0 && (
+            {/* Visual preview — opt-in to avoid memory exhaustion from SSR */}
+            {!showVisualPreview && (
+                <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={() => setShowVisualPreview(true)}
+                    className="taipb-show-preview-button"
+                >
+                    Show visual preview
+                </Button>
+            )}
+
+            {showVisualPreview && previewBlocks.length > 0 && (
                 <div className="taipb-visual-preview">
                     <BlockPreview
-                        blocks={blocks}
+                        blocks={previewBlocks}
                         viewportWidth={1200}
                     />
+                    {previewTruncated && (
+                        <p style={{ padding: '8px 12px', fontSize: '11px', color: '#757575', margin: 0 }}>
+                            Preview showing first {MAX_PREVIEW_BLOCKS} of {blocks.length} blocks.
+                        </p>
+                    )}
                 </div>
             )}
 

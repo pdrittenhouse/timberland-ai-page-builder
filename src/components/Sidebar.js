@@ -1,6 +1,8 @@
 import { PanelBody } from '@wordpress/components';
 import { useSelect } from '@wordpress/data';
+import ModelSelector from './ModelSelector';
 import PromptInput from './PromptInput';
+import LayoutPlanPanel from './LayoutPlanPanel';
 import PatternMatch from './PatternMatch';
 import ClarificationPanel from './ClarificationPanel';
 import PreviewPanel from './PreviewPanel';
@@ -21,7 +23,9 @@ export default function Sidebar() {
     return (
         <>
             <PanelBody title="Generate Layout" initialOpen={true}>
+                <ModelSelector />
                 <PromptInput postType={postType} postId={postId} />
+                <LayoutPlanPanel postType={postType} postId={postId} />
                 <PatternMatch postType={postType} postId={postId} />
                 <ClarificationPanel postType={postType} postId={postId} />
                 <PreviewPanel />

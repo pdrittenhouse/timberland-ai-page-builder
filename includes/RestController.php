@@ -41,6 +41,18 @@ class RestController
                     'type' => 'string',
                     'sanitize_callback' => 'sanitize_text_field',
                 ],
+                'use_patterns' => [
+                    'required' => false,
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'string',
+                    ],
+                ],
+                'model' => [
+                    'required' => false,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
             ],
         ]);
 
@@ -68,9 +80,16 @@ class RestController
                     'sanitize_callback' => 'sanitize_textarea_field',
                 ],
                 'use_pattern' => [
-                    'required' => true,
+                    'required' => false,
                     'type' => 'string',
                     'sanitize_callback' => 'sanitize_text_field',
+                ],
+                'use_patterns' => [
+                    'required' => false,
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'string',
+                    ],
                 ],
             ],
         ]);
@@ -103,6 +122,19 @@ class RestController
             'methods' => 'GET',
             'callback' => [$this, 'handle_manifest_stats'],
             'permission_callback' => [$this, 'can_edit'],
+        ]);
+
+        register_rest_route(self::NAMESPACE, '/decompose', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_decompose'],
+            'permission_callback' => [$this, 'can_edit'],
+            'args' => [
+                'prompt' => [
+                    'required' => true,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_textarea_field',
+                ],
+            ],
         ]);
 
         register_rest_route(self::NAMESPACE, '/history', [
@@ -139,7 +171,13 @@ class RestController
         $prompt = $request->get_param('prompt');
         $post_type = $request->get_param('post_type') ?? 'page';
         $post_id = $request->get_param('post_id');
-        $use_pattern = $request->get_param('use_pattern');
+
+        // Normalize: accept use_patterns (array) or use_pattern (string)
+        $use_patterns = $request->get_param('use_patterns');
+        if (empty($use_patterns)) {
+            $use_pattern = $request->get_param('use_pattern');
+            $use_patterns = $use_pattern ? [$use_pattern] : [];
+        }
 
         if (empty(trim($prompt))) {
             return new \WP_Error('taipb_empty_prompt', 'Prompt cannot be empty.', ['status' => 400]);
@@ -150,7 +188,8 @@ class RestController
             $rate_limiter = new RateLimiter();
             $generator = new MarkupGenerator($store, $rate_limiter);
 
-            $result = $generator->generate($prompt, $post_type, $post_id, $use_pattern);
+            $model = $request->get_param('model');
+            $result = $generator->generate($prompt, $post_type, $post_id, $use_patterns, $model);
 
             return new \WP_REST_Response($result, 200);
         } catch (\RuntimeException $e) {
@@ -262,12 +301,31 @@ class RestController
     public function handle_analyze(\WP_REST_Request $request): \WP_REST_Response
     {
         $prompt = $request->get_param('prompt');
-        $use_pattern = $request->get_param('use_pattern');
+
+        // Normalize: accept use_patterns (array) or use_pattern (string)
+        $use_patterns = $request->get_param('use_patterns');
+        if (empty($use_patterns)) {
+            $use_pattern = $request->get_param('use_pattern');
+            $use_patterns = $use_pattern ? [$use_pattern] : [];
+        }
 
         $store = Plugin::get_manifest_store();
         $manifest = $store->get();
 
-        $questions = $this->detect_ambiguities($prompt, $use_pattern, $manifest);
+        // Detect ambiguities across ALL selected patterns
+        $questions = [];
+        foreach ($use_patterns as $pattern_id) {
+            $pattern_questions = $this->detect_ambiguities($prompt, $pattern_id, $manifest);
+            foreach ($pattern_questions as $q) {
+                // Prefix question IDs with pattern ID to avoid collisions
+                // when multiple patterns produce the same question type
+                if (count($use_patterns) > 1) {
+                    $q['id'] = $pattern_id . '__' . $q['id'];
+                    $q['pattern_id'] = $pattern_id;
+                }
+                $questions[] = $q;
+            }
+        }
 
         return new \WP_REST_Response([
             'questions' => $questions,
@@ -547,6 +605,33 @@ class RestController
             'per_page' => $per_page,
             'total_pages' => ceil($total / $per_page),
         ], 200);
+    }
+
+    /**
+     * POST /decompose — Decompose a prompt into structured layout sections.
+     */
+    public function handle_decompose(\WP_REST_Request $request): \WP_REST_Response
+    {
+        $prompt = $request->get_param('prompt');
+        $store = Plugin::get_manifest_store();
+        $manifest = $store->get();
+
+        try {
+            $decomposer = new PromptDecomposer();
+            $result = $decomposer->decompose($prompt, $manifest);
+
+            return new \WP_REST_Response([
+                'decomposition' => $result,
+                'has_sections' => !empty($result['sections']),
+            ], 200);
+        } catch (\RuntimeException $e) {
+            // Decomposition failed — return empty result so caller falls back to keyword matching
+            return new \WP_REST_Response([
+                'decomposition' => ['sections' => [], 'overall_intent' => '', 'suggested_pattern_ids' => []],
+                'has_sections' => false,
+                'error' => $e->getMessage(),
+            ], 200);
+        }
     }
 
     /**

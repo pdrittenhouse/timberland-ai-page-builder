@@ -118,6 +118,8 @@ class Plugin
             'nonce' => wp_create_nonce('wp_rest'),
             'postType' => get_post_type(),
             'canManage' => current_user_can('manage_options'),
+            'models' => self::get_available_models(),
+            'defaultModel' => self::get_settings()['model'] ?? 'claude-sonnet-4-5-20250929',
         ]);
     }
 
@@ -135,6 +137,7 @@ class Plugin
         $sanitized = [];
 
         $sanitized['api_key'] = sanitize_text_field($input['api_key'] ?? $defaults['api_key']);
+        $sanitized['openai_api_key'] = sanitize_text_field($input['openai_api_key'] ?? $defaults['openai_api_key']);
         $sanitized['model'] = sanitize_text_field($input['model'] ?? $defaults['model']);
         $sanitized['max_tokens'] = absint($input['max_tokens'] ?? $defaults['max_tokens']);
         $sanitized['rate_limit_per_hour'] = absint($input['rate_limit_per_hour'] ?? $defaults['rate_limit_per_hour']);
@@ -150,6 +153,7 @@ class Plugin
     {
         return [
             'api_key' => '',
+            'openai_api_key' => '',
             'model' => 'claude-sonnet-4-5-20250929',
             'max_tokens' => 8192,
             'rate_limit_per_hour' => 20,
@@ -164,6 +168,31 @@ class Plugin
     {
         $settings = get_option('taipb_settings', []);
         return wp_parse_args($settings, self::get_default_settings());
+    }
+
+    /**
+     * Get available LLM models based on configured API keys.
+     *
+     * @return array<array{value: string, label: string, provider: string}>
+     */
+    public static function get_available_models(): array
+    {
+        $settings = self::get_settings();
+        $models = [];
+
+        $has_anthropic = defined('TAIPB_API_KEY') || !empty($settings['api_key']);
+        if ($has_anthropic) {
+            $models[] = ['value' => 'claude-sonnet-4-5-20250929', 'label' => 'Claude Sonnet 4.5', 'provider' => 'anthropic'];
+            $models[] = ['value' => 'claude-opus-4-6', 'label' => 'Claude Opus 4.6', 'provider' => 'anthropic'];
+        }
+
+        $has_openai = defined('TAIPB_OPENAI_API_KEY') || !empty($settings['openai_api_key']);
+        if ($has_openai) {
+            $models[] = ['value' => 'gpt-4o', 'label' => 'GPT-4o', 'provider' => 'openai'];
+            $models[] = ['value' => 'gpt-4.1', 'label' => 'GPT-4.1', 'provider' => 'openai'];
+        }
+
+        return $models;
     }
 
     private function create_history_table(): void

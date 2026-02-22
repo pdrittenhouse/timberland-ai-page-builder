@@ -1,3 +1,8 @@
+/* Model selector */
+.taipb-model-selector {
+    margin-bottom: 12px;
+}
+
 .taipb-prompt-input {
     margin-bottom: 16px;
 }
@@ -27,6 +32,11 @@
     margin: 8px 0;
     padding-left: 16px;
     color: #996800;
+    font-size: 12px;
+}
+
+.taipb-show-preview-button {
+    margin: 8px 0;
     font-size: 12px;
 }
 
@@ -149,13 +159,28 @@
 
 .taipb-pattern-match-item {
     border: 1px solid #ddd;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.taipb-pattern-match-item:hover {
+    border-color: #b0b0b0;
+}
+
+.taipb-pattern-match-item--selected {
+    border-color: var(--wp-admin-theme-color, #007cba);
+    box-shadow: 0 0 0 1px var(--wp-admin-theme-color, #007cba);
 }
 
 .taipb-pattern-match-item .components-card__header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 8px;
     padding: 8px 12px;
+}
+
+.taipb-pattern-match-item .components-checkbox-control__input-container {
+    flex-shrink: 0;
 }
 
 .taipb-pattern-match-title {
@@ -172,11 +197,7 @@
     text-transform: capitalize;
 }
 
-.taipb-pattern-match-item .components-card__body {
-    padding: 8px 12px;
-}
-
-.taipb-pattern-use-button {
+.taipb-pattern-confirm-button {
     width: 100%;
     justify-content: center;
     font-size: 12px;
@@ -241,6 +262,55 @@
 
 .taipb-clarification-actions .components-button {
     flex: 1;
+    justify-content: center;
+    font-size: 12px;
+}
+
+/* Layout plan panel */
+.taipb-layout-plan {
+    margin: 16px 0;
+    padding: 12px;
+    background: #f0faf0;
+    border: 1px solid #b8d8b8;
+    border-radius: 4px;
+}
+
+.taipb-layout-plan-heading {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 12px;
+}
+
+.taipb-layout-plan-section {
+    margin-bottom: 8px;
+}
+
+.taipb-layout-plan-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.taipb-layout-plan-pattern {
+    font-size: 11px;
+    color: #757575;
+    background: #e8e8e8;
+    padding: 2px 6px;
+    border-radius: 2px;
+    white-space: nowrap;
+}
+
+.taipb-layout-plan-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.taipb-layout-plan-actions .components-button {
+    width: 100%;
     justify-content: center;
     font-size: 12px;
 }

@@ -5,13 +5,15 @@ const STORE_NAME = 'timberland-ai-page-builder';
 
 const DEFAULT_STATE = {
     prompt: '',
+    selectedModel: window.taipbSettings?.defaultModel || '',
     isGenerating: false,
     isMatching: false,
     isAnalyzing: false,
     patternMatches: [],
-    selectedPattern: null,
+    selectedPatterns: [],
     clarificationQuestions: [],
     clarificationAnswers: {},
+    decomposition: null,
     generatedMarkup: '',
     validationResult: null,
     apiResponse: null,
@@ -23,6 +25,10 @@ const DEFAULT_STATE = {
 const actions = {
     setPrompt(prompt) {
         return { type: 'SET_PROMPT', prompt };
+    },
+
+    setModel(model) {
+        return { type: 'SET_MODEL', model };
     },
 
     setGenerating(isGenerating) {
@@ -41,8 +47,12 @@ const actions = {
         return { type: 'SET_PATTERN_MATCHES', matches };
     },
 
-    selectPattern(patternId) {
-        return { type: 'SELECT_PATTERN', patternId };
+    selectPatterns(patternIds) {
+        return { type: 'SELECT_PATTERNS', patternIds };
+    },
+
+    togglePattern(patternId) {
+        return { type: 'TOGGLE_PATTERN', patternId };
     },
 
     clearMatches() {
@@ -59,6 +69,14 @@ const actions = {
 
     clearClarification() {
         return { type: 'CLEAR_CLARIFICATION' };
+    },
+
+    setDecomposition(decomposition) {
+        return { type: 'SET_DECOMPOSITION', decomposition };
+    },
+
+    clearDecomposition() {
+        return { type: 'CLEAR_DECOMPOSITION' };
     },
 
     setResult(markup, validation, apiResponse) {
@@ -87,8 +105,9 @@ const actions = {
     },
 
     /**
-     * Step 1: Check for matching patterns/layouts before generating.
-     * Auto-selects when there's exactly one match or one dominant match.
+     * Step 1: Try LLM decomposition first, fall back to keyword matching.
+     * If decomposition returns sections, store them and let LayoutPlanPanel render.
+     * Otherwise, fall through to keyword-based matching.
      */
     checkMatches(prompt, postType, postId) {
         return async ({ dispatch }) => {
@@ -97,8 +116,28 @@ const actions = {
             dispatch.clearMatches();
             dispatch.clearClarification();
             dispatch.clearResult();
+            dispatch.clearDecomposition();
 
             try {
+                // Try LLM-based decomposition first
+                try {
+                    const decomp = await apiFetch({
+                        path: '/taipb/v1/decompose',
+                        method: 'POST',
+                        data: { prompt },
+                    });
+
+                    if (decomp.has_sections && decomp.decomposition?.sections?.length > 0) {
+                        // Decomposition succeeded — show layout plan for user review
+                        dispatch.setDecomposition(decomp.decomposition);
+                        dispatch.setMatching(false);
+                        return;
+                    }
+                } catch {
+                    // Decomposition failed — fall through to keyword matching
+                }
+
+                // Keyword-based matching fallback
                 const result = await apiFetch({
                     path: '/taipb/v1/match',
                     method: 'POST',
@@ -108,32 +147,53 @@ const actions = {
                 if (result.has_matches && result.matches.length > 0) {
                     const matches = result.matches;
 
-                    // Auto-select if there's exactly one match, or one
-                    // dominant match (score >= 8 and 1.5x the runner-up)
-                    const autoSelect =
+                    // Collect all high-scoring matches (score >= 8)
+                    const strongMatches = matches.filter(
+                        (m) => m.score >= 8
+                    );
+
+                    // Single dominant match: exactly 1 match, or top score >= 8
+                    // and >= 1.5x the runner-up
+                    const singleDominant =
                         matches.length === 1 ||
                         (matches[0].score >= 8 &&
                             (matches.length < 2 ||
                                 matches[0].score >=
                                     matches[1].score * 1.5));
 
-                    if (autoSelect) {
+                    if (singleDominant && strongMatches.length <= 1) {
+                        // Auto-select single pattern
                         dispatch.setMatching(false);
-                        dispatch.analyzePattern(
+                        dispatch.analyzePatterns(prompt, postType, postId, [
+                            matches[0].id,
+                        ]);
+                        return;
+                    }
+
+                    if (strongMatches.length >= 2) {
+                        // Auto-select all strong matches (multi-pattern)
+                        dispatch.setMatching(false);
+                        dispatch.analyzePatterns(
                             prompt,
                             postType,
                             postId,
-                            matches[0].id
+                            strongMatches.map((m) => m.id)
                         );
                         return;
                     }
 
+                    // Show match selection UI
                     dispatch.setPatternMatches(matches);
                 } else {
-                    dispatch.generateWithPattern(prompt, postType, postId, null);
+                    dispatch.generateWithPatterns(
+                        prompt,
+                        postType,
+                        postId,
+                        []
+                    );
                 }
             } catch {
-                dispatch.generateWithPattern(prompt, postType, postId, null);
+                dispatch.generateWithPatterns(prompt, postType, postId, []);
             } finally {
                 dispatch.setMatching(false);
             }
@@ -141,25 +201,25 @@ const actions = {
     },
 
     /**
-     * Step 2: Analyze pattern + prompt for ambiguities.
+     * Step 2: Analyze patterns + prompt for ambiguities.
      * If questions exist, show them. Otherwise, proceed to generation.
      */
-    analyzePattern(prompt, postType, postId, usePattern) {
+    analyzePatterns(prompt, postType, postId, usePatterns) {
         return async ({ dispatch }) => {
-            if (!usePattern) {
-                dispatch.generateWithPattern(prompt, postType, postId, null);
+            if (!usePatterns || usePatterns.length === 0) {
+                dispatch.generateWithPatterns(prompt, postType, postId, []);
                 return;
             }
 
             dispatch.setAnalyzing(true);
             dispatch.setError(null);
-            dispatch.selectPattern(usePattern);
+            dispatch.selectPatterns(usePatterns);
 
             try {
                 const result = await apiFetch({
                     path: '/taipb/v1/analyze',
                     method: 'POST',
-                    data: { prompt, use_pattern: usePattern },
+                    data: { prompt, use_patterns: usePatterns },
                 });
 
                 if (result.has_questions) {
@@ -171,20 +231,20 @@ const actions = {
                         }
                     }
                 } else {
-                    dispatch.generateWithPattern(
+                    dispatch.generateWithPatterns(
                         prompt,
                         postType,
                         postId,
-                        usePattern
+                        usePatterns
                     );
                 }
             } catch {
                 // Analysis failed — proceed without clarification
-                dispatch.generateWithPattern(
+                dispatch.generateWithPatterns(
                     prompt,
                     postType,
                     postId,
-                    usePattern
+                    usePatterns
                 );
             } finally {
                 dispatch.setAnalyzing(false);
@@ -193,10 +253,10 @@ const actions = {
     },
 
     /**
-     * Step 3: Generate with optional pattern selection and clarification answers.
+     * Step 3: Generate with optional pattern selections and clarification answers.
      */
-    generateWithPattern(prompt, postType, postId, usePattern, answers) {
-        return async ({ dispatch }) => {
+    generateWithPatterns(prompt, postType, postId, usePatterns, answers) {
+        return async ({ dispatch, select: storeSelect }) => {
             dispatch.setGenerating(true);
             dispatch.setError(null);
             dispatch.clearMatches();
@@ -206,7 +266,12 @@ const actions = {
             if (answers && Object.keys(answers).length > 0) {
                 const clarifications = [];
                 for (const [key, value] of Object.entries(answers)) {
-                    if (key === 'hero_content_location') {
+                    // Strip pattern ID prefix if present (e.g., "pattern_123__hero_content_location")
+                    const baseKey = key.includes('__')
+                        ? key.split('__').pop()
+                        : key;
+
+                    if (baseKey === 'hero_content_location') {
                         if (value === 'data_fields') {
                             clarifications.push(
                                 'Apply title/text changes to the block data fields (title, subtitle, text), NOT to InnerBlocks.'
@@ -220,7 +285,7 @@ const actions = {
                                 'Apply title/text changes to BOTH the block data fields AND the InnerBlocks.'
                             );
                         }
-                    } else if (key === 'image_handling') {
+                    } else if (baseKey === 'image_handling') {
                         if (value === 'keep') {
                             clarifications.push(
                                 'Keep the existing pattern image unchanged.'
@@ -230,16 +295,26 @@ const actions = {
                                 'Remove the image so I can set it manually.'
                             );
                         } else if (value === 'provide_name') {
-                            const filename =
-                                answers['image_handling_value'] || '';
+                            const valueKey = key.includes('__')
+                                ? key.replace(
+                                      'image_handling',
+                                      'image_handling_value'
+                                  )
+                                : 'image_handling_value';
+                            const filename = answers[valueKey] || '';
                             if (filename) {
                                 clarifications.push(
                                     `Use the image named "${filename}" from the media library for the image field.`
                                 );
                             }
                         } else if (value === 'provide_url') {
-                            const url =
-                                answers['image_handling_value'] || '';
+                            const valueKey = key.includes('__')
+                                ? key.replace(
+                                      'image_handling',
+                                      'image_handling_value'
+                                  )
+                                : 'image_handling_value';
+                            const url = answers[valueKey] || '';
                             if (url) {
                                 clarifications.push(
                                     `Use this image URL for the image field: ${url}`
@@ -256,14 +331,46 @@ const actions = {
                 }
             }
 
+            // Append structured layout plan from decomposition if available
+            const decomposition = storeSelect.getDecomposition();
+            if (decomposition?.sections?.length > 0) {
+                const structuredHint = decomposition.sections
+                    .map((s, i) => {
+                        let hint = `Section ${i + 1}: ${s.intent}`;
+                        if (s.pattern_hint) {
+                            hint += ` (use pattern: ${s.pattern_hint})`;
+                        }
+                        if (s.content) {
+                            Object.entries(s.content).forEach(([k, v]) => {
+                                if (v) {
+                                    hint += `\n  ${k}: ${v}`;
+                                }
+                            });
+                        }
+                        return hint;
+                    })
+                    .join('\n\n');
+
+                finalPrompt +=
+                    '\n\n[Structured layout plan:\n' +
+                    structuredHint +
+                    '\n]';
+            }
+
+            // Get selected model
+            const model = storeSelect.getModel();
+
             try {
                 const data = {
                     prompt: finalPrompt,
                     post_type: postType || 'page',
                     post_id: postId || null,
                 };
-                if (usePattern) {
-                    data.use_pattern = usePattern;
+                if (usePatterns && usePatterns.length > 0) {
+                    data.use_patterns = usePatterns;
+                }
+                if (model) {
+                    data.model = model;
                 }
 
                 const result = await apiFetch({
@@ -293,6 +400,7 @@ const actions = {
             } finally {
                 dispatch.setGenerating(false);
                 dispatch.clearClarification();
+                dispatch.clearDecomposition();
             }
         };
     },
@@ -326,6 +434,9 @@ const reducer = (state = DEFAULT_STATE, action) => {
         case 'SET_PROMPT':
             return { ...state, prompt: action.prompt };
 
+        case 'SET_MODEL':
+            return { ...state, selectedModel: action.model };
+
         case 'SET_GENERATING':
             return { ...state, isGenerating: action.isGenerating };
 
@@ -338,11 +449,23 @@ const reducer = (state = DEFAULT_STATE, action) => {
         case 'SET_PATTERN_MATCHES':
             return { ...state, patternMatches: action.matches };
 
-        case 'SELECT_PATTERN':
-            return { ...state, selectedPattern: action.patternId };
+        case 'SELECT_PATTERNS':
+            return { ...state, selectedPatterns: action.patternIds };
+
+        case 'TOGGLE_PATTERN':
+            return {
+                ...state,
+                selectedPatterns: state.selectedPatterns.includes(
+                    action.patternId
+                )
+                    ? state.selectedPatterns.filter(
+                          (id) => id !== action.patternId
+                      )
+                    : [...state.selectedPatterns, action.patternId],
+            };
 
         case 'CLEAR_MATCHES':
-            return { ...state, patternMatches: [], selectedPattern: null };
+            return { ...state, patternMatches: [], selectedPatterns: [] };
 
         case 'SET_CLARIFICATION_QUESTIONS':
             return { ...state, clarificationQuestions: action.questions };
@@ -362,6 +485,12 @@ const reducer = (state = DEFAULT_STATE, action) => {
                 clarificationQuestions: [],
                 clarificationAnswers: {},
             };
+
+        case 'SET_DECOMPOSITION':
+            return { ...state, decomposition: action.decomposition };
+
+        case 'CLEAR_DECOMPOSITION':
+            return { ...state, decomposition: null };
 
         case 'SET_RESULT':
             return {
@@ -397,13 +526,15 @@ const reducer = (state = DEFAULT_STATE, action) => {
 
 const selectors = {
     getPrompt: (state) => state.prompt,
+    getModel: (state) => state.selectedModel,
     isGenerating: (state) => state.isGenerating,
     isMatching: (state) => state.isMatching,
     isAnalyzing: (state) => state.isAnalyzing,
     getPatternMatches: (state) => state.patternMatches,
-    getSelectedPattern: (state) => state.selectedPattern,
+    getSelectedPatterns: (state) => state.selectedPatterns,
     getClarificationQuestions: (state) => state.clarificationQuestions,
     getClarificationAnswers: (state) => state.clarificationAnswers,
+    getDecomposition: (state) => state.decomposition,
     getGeneratedMarkup: (state) => state.generatedMarkup,
     getValidationResult: (state) => state.validationResult,
     getApiResponse: (state) => state.apiResponse,

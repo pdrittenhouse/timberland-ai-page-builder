@@ -41,9 +41,9 @@ class PromptBuilder
     /**
      * Build the full system prompt for a given user prompt and context.
      *
-     * @param string|null $use_pattern Pattern/layout ID to use as base (e.g., "pattern_123" or "layout_5").
+     * @param array $use_patterns Pattern/layout IDs to use as base (e.g., ["pattern_123", "layout_5"]).
      */
-    public function build(string $user_prompt, string $post_type = 'page', ?string $use_pattern = null): string
+    public function build(string $user_prompt, string $post_type = 'page', array $use_patterns = []): string
     {
         $relevant_blocks = $this->filter_blocks_for_prompt($user_prompt);
 
@@ -54,9 +54,9 @@ class PromptBuilder
         $sections[] = $this->build_nesting_section();
         $sections[] = $this->build_post_type_section($post_type);
 
-        // If a specific pattern was selected, include it prominently
-        if ($use_pattern) {
-            $sections[] = $this->build_selected_pattern_section($use_pattern);
+        // If specific patterns were selected, include them prominently
+        if (!empty($use_patterns)) {
+            $sections[] = $this->build_selected_patterns_section($use_patterns);
         } else {
             $sections[] = $this->build_layouts_section($user_prompt);
             $sections[] = $this->build_patterns_section($user_prompt);
@@ -106,6 +106,9 @@ The AVAILABLE BLOCKS section below contains the authoritative field key map for 
 
 ## Using Patterns and Layouts
 When the user references a known pattern or layout by name (e.g., "telco hero", "home cards"), use the matching REFERENCE PATTERN or REFERENCE LAYOUT as a starting point. Adapt the content to match the user's request (change text, titles, etc.) but preserve the block structure. Always replace any field keys in the example with the correct keys from the AVAILABLE BLOCKS field key maps.
+
+## Using Multiple Patterns
+When multiple BASE PATTERNs are provided, combine them in order to build a complete page. Each pattern is a distinct section — output them sequentially. Do not merge patterns into one block — keep each pattern's block structure intact as a separate section of the page.
 
 ## Container vs Leaf Blocks
 - Container blocks (section, row, column, hero-unit, card-grid, feature) have `jsx: true` — they accept InnerBlocks (child blocks between open/close tags).
@@ -264,6 +267,72 @@ RULES;
 
         if (!empty($current['usage_notes'])) {
             $output .= "Notes: {$current['usage_notes']}\n";
+        }
+
+        return $output;
+    }
+
+    /**
+     * Build section for multiple user-selected patterns/layouts.
+     * Delegates to the single-pattern method when only one is selected.
+     */
+    private function build_selected_patterns_section(array $pattern_ids): string
+    {
+        if (count($pattern_ids) === 1) {
+            return $this->build_selected_pattern_section($pattern_ids[0]);
+        }
+
+        $output = "# BASE PATTERNS\n\n";
+        $output .= "The user selected " . count($pattern_ids) . " patterns as starting points. ";
+        $output .= "You MUST use ALL of these patterns, combining them in the order listed. ";
+        $output .= "Each pattern contributes a distinct section of the page. ";
+        $output .= "Adapt the content (titles, text, etc.) according to the user's prompt, but preserve each pattern's block structure.\n\n";
+        $output .= "IMPORTANT: All field keys in these patterns have been replaced with `USE_FIELD_KEY_MAP`. You MUST look up the correct field keys from the AVAILABLE BLOCKS field key maps above.\n\n";
+        $output .= "IMPORTANT: Preserve ALL image field values (image_type, image attachment IDs, image_url) EXACTLY as they appear unless the user explicitly asks to change an image.\n\n";
+
+        $pattern_num = 0;
+        foreach ($pattern_ids as $pattern_id) {
+            $pattern_num++;
+
+            $content = null;
+            $title = '';
+
+            if (str_starts_with($pattern_id, 'pattern_')) {
+                $id = (int) substr($pattern_id, 8);
+                foreach ($this->manifest['patterns'] ?? [] as $pattern) {
+                    if (($pattern['id'] ?? 0) === $id) {
+                        $content = $pattern['content'] ?? '';
+                        $title = $pattern['title'] ?? '';
+                        break;
+                    }
+                }
+            } elseif (str_starts_with($pattern_id, 'layout_')) {
+                $index = (int) substr($pattern_id, 7);
+                $layouts = $this->manifest['layouts'] ?? [];
+                if (isset($layouts[$index])) {
+                    $content = $layouts[$index]['content'] ?? '';
+                    $title = $layouts[$index]['name'] ?? '';
+                }
+            }
+
+            if (!$content) {
+                continue;
+            }
+
+            $stripped = $this->strip_field_keys_from_markup($content);
+            $innerblocks_notes = $this->analyze_pattern_innerblocks($content);
+
+            $output .= "## BASE PATTERN {$pattern_num}: {$title}\n\n";
+
+            if (!empty($innerblocks_notes)) {
+                $output .= "### CONTENT LOCATION NOTES\n";
+                foreach ($innerblocks_notes as $note) {
+                    $output .= "- **{$note['block']}**: {$note['instruction']}\n";
+                }
+                $output .= "\n";
+            }
+
+            $output .= "```\n{$stripped}\n```\n\n";
         }
 
         return $output;

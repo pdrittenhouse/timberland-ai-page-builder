@@ -8,6 +8,11 @@ if (!defined('ABSPATH')) {
 
 /**
  * Validates generated block markup before sending it to the editor.
+ *
+ * Uses regex-based parsing instead of WordPress's parse_blocks() to
+ * avoid memory exhaustion on large generated markup. The WordPress
+ * block parser duplicates innerHTML for every block node, which can
+ * easily exceed PHP memory limits on complex layouts.
  */
 class MarkupValidator
 {
@@ -40,11 +45,10 @@ class MarkupValidator
             ];
         }
 
-        // Parse blocks using WordPress parser
-        $blocks = parse_blocks($markup);
-        $blocks = array_filter($blocks, fn($b) => !empty($b['blockName']));
+        // Count all blocks via regex (core + ACF, including nested)
+        $block_count = $this->count_blocks_regex($markup);
 
-        if (empty($blocks)) {
+        if ($block_count === 0) {
             $errors[] = 'No valid blocks found in markup.';
             return [
                 'valid' => false,
@@ -54,8 +58,22 @@ class MarkupValidator
             ];
         }
 
-        $block_count = 0;
-        $this->validate_blocks_recursive($blocks, $errors, $warnings, $block_count);
+        // Validate ACF blocks by extracting their JSON attributes via regex
+        preg_match_all(
+            '/<!-- wp:acf\/([a-z0-9-]+) (\{.*?\}) (?:\/)?-->/s',
+            $markup,
+            $matches,
+            PREG_SET_ORDER
+        );
+
+        foreach ($matches as $match) {
+            $block_name = 'acf/' . $match[1];
+            $block_data = json_decode($match[2], true);
+            if (!$block_data) {
+                continue;
+            }
+            $this->validate_acf_block($block_name, $block_data, $errors, $warnings);
+        }
 
         return [
             'valid' => empty($errors),
@@ -66,34 +84,56 @@ class MarkupValidator
     }
 
     /**
-     * Recursively validate parsed blocks.
+     * Lightweight validation that checks ACF block attributes via regex
+     * without counting blocks. Use after post-processing where block
+     * structure hasn't changed — only JSON attributes were fixed.
+     *
+     * @param int $block_count Block count from a prior full validation.
+     * @return array{valid: bool, errors: string[], warnings: string[], block_count: int}
      */
-    private function validate_blocks_recursive(array $blocks, array &$errors, array &$warnings, int &$block_count, int $depth = 0): void
+    public function validate_attributes(string $markup, int $block_count): array
     {
-        foreach ($blocks as $block) {
-            if (empty($block['blockName'])) {
+        $markup = $this->strip_markdown_fences($markup);
+        $errors = [];
+        $warnings = [];
+
+        // Extract ACF block JSON via regex
+        preg_match_all(
+            '/<!-- wp:acf\/([a-z0-9-]+) (\{.*?\}) (?:\/)?-->/s',
+            $markup,
+            $matches,
+            PREG_SET_ORDER
+        );
+
+        foreach ($matches as $match) {
+            $block_name = 'acf/' . $match[1];
+            $block_data = json_decode($match[2], true);
+            if (!$block_data) {
                 continue;
             }
-
-            $block_count++;
-            $name = $block['blockName'];
-
-            // Check if this is an ACF block
-            if (str_starts_with($name, 'acf/')) {
-                $this->validate_acf_block($name, $block['attrs'] ?? [], $errors, $warnings);
-            }
-
-            // Validate inner blocks recursively
-            if (!empty($block['innerBlocks'])) {
-                // Check that this block is a container
-                $manifest_block = $this->manifest['blocks'][$name] ?? null;
-                if ($manifest_block && !$manifest_block['is_container']) {
-                    $warnings[] = "Block `{$name}` has inner blocks but is not marked as a container (jsx: false).";
-                }
-
-                $this->validate_blocks_recursive($block['innerBlocks'], $errors, $warnings, $block_count, $depth + 1);
-            }
+            $this->validate_acf_block($block_name, $block_data, $errors, $warnings);
         }
+
+        return [
+            'valid' => empty($errors),
+            'errors' => $errors,
+            'warnings' => $warnings,
+            'block_count' => $block_count,
+        ];
+    }
+
+    /**
+     * Count blocks in markup using regex. Matches block opening comments
+     * like <!-- wp:core/heading --> and <!-- wp:acf/hero {"data":{}} -->.
+     */
+    private function count_blocks_regex(string $markup): int
+    {
+        // Match block openers: <!-- wp:namespace/name or <!-- wp:name
+        // This captures both self-closing (/-->) and paired blocks.
+        return preg_match_all(
+            '/<!-- wp:([a-z][a-z0-9-]*\/)?[a-z][a-z0-9-]*[\s\{]/s',
+            $markup
+        );
     }
 
     /**
@@ -146,13 +186,22 @@ class MarkupValidator
     }
 
     /**
-     * Strip markdown code fences from Claude output.
+     * Strip markdown code fences and any non-block text from LLM output.
      */
     private function strip_markdown_fences(string $markup): string
     {
-        // Remove ```html ... ``` or ``` ... ``` wrappers
-        $markup = preg_replace('/^```(?:html)?\s*\n/i', '', $markup);
-        $markup = preg_replace('/\n```\s*$/', '', $markup);
+        $markup = preg_replace('/^```(?:html|xml|php|plaintext)?\s*\n?/im', '', $markup);
+        $markup = preg_replace('/\n?```\s*$/m', '', $markup);
+
+        $first_block = strpos($markup, '<!-- wp:');
+        if ($first_block !== false && $first_block > 0) {
+            $markup = substr($markup, $first_block);
+        }
+
+        $last_close = strrpos($markup, '-->');
+        if ($last_close !== false) {
+            $markup = substr($markup, 0, $last_close + 3);
+        }
 
         return trim($markup);
     }

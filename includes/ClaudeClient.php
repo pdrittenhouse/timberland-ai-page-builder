@@ -15,13 +15,13 @@ if (!defined('ABSPATH')) {
 /**
  * Wraps the Anthropic PHP SDK for Claude API calls.
  */
-class ClaudeClient
+class ClaudeClient implements LLMClientInterface
 {
     private Client $client;
     private string $model;
     private int $max_tokens;
 
-    public function __construct()
+    public function __construct(?string $model_override = null)
     {
         $settings = Plugin::get_settings();
 
@@ -32,7 +32,7 @@ class ClaudeClient
         }
 
         $this->client = new Client(apiKey: $api_key);
-        $this->model = $settings['model'] ?? 'claude-sonnet-4-5-20250929';
+        $this->model = $model_override ?? ($settings['model'] ?? 'claude-sonnet-4-5-20250929');
         $this->max_tokens = (int) ($settings['max_tokens'] ?? 8192);
     }
 
@@ -43,6 +43,12 @@ class ClaudeClient
      */
     public function generate(string $system_prompt, string $user_prompt): array
     {
+        // Increase PHP's socket timeout for long Claude API calls.
+        // Symfony HttpClient uses default_socket_timeout as its idle timeout,
+        // and complex prompts can take 2-3 minutes before Claude starts responding.
+        $prev_timeout = ini_get('default_socket_timeout');
+        ini_set('default_socket_timeout', '600');
+
         try {
             $response = $this->client->messages->create(
                 model: $this->model,
@@ -78,6 +84,8 @@ class ClaudeClient
             throw new \RuntimeException('Anthropic rate limit reached. Please wait and try again.');
         } catch (AnthropicError $e) {
             throw new \RuntimeException('Claude API error: ' . $e->getMessage());
+        } finally {
+            ini_set('default_socket_timeout', $prev_timeout ?: '60');
         }
     }
 

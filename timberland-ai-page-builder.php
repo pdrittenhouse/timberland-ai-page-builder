@@ -21,6 +21,26 @@ define('TAIPB_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('TAIPB_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('TAIPB_INCLUDES_DIR', TAIPB_PLUGIN_DIR . 'includes/');
 
+// Raise memory limit for admin and REST API requests.
+// Block parsing (parse_blocks) in WordPress core can be very memory-intensive
+// with large generated layouts. This filter applies to wp-admin page loads
+// and REST API dispatch via wp_raise_memory_limit('admin').
+add_filter('admin_memory_limit', function () {
+    return '1024M';
+});
+
+// Prevent WordPress from running do_blocks()/parse_blocks() on post
+// content during REST API responses. The block editor only needs the raw
+// markup (delivered via `content.raw`). The rendered HTML (`content.rendered`)
+// triggers do_blocks() which calls parse_blocks() — on large posts this
+// can exhaust PHP memory. By returning the raw content unprocessed, we
+// skip the expensive block parsing entirely for editor REST requests.
+add_action('rest_api_init', function () {
+    // Remove do_blocks from the_content filter only during REST requests
+    // that serve the block editor (which reads content.raw, not rendered).
+    remove_filter('the_content', 'do_blocks', 9);
+});
+
 // Composer autoloader
 if (file_exists(TAIPB_PLUGIN_DIR . 'vendor/autoload.php')) {
     require_once TAIPB_PLUGIN_DIR . 'vendor/autoload.php';

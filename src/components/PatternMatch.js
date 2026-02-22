@@ -1,20 +1,31 @@
-import { Button, Card, CardBody, CardHeader } from '@wordpress/components';
+import {
+    Button,
+    Card,
+    CardHeader,
+    CheckboxControl,
+} from '@wordpress/components';
 import { useSelect, useDispatch } from '@wordpress/data';
 import { STORE_NAME } from '../store';
 
 export default function PatternMatch({ postType, postId }) {
-    const { prompt, matches, isGenerating, isAnalyzing } = useSelect(
-        (select) => ({
-            prompt: select(STORE_NAME).getPrompt(),
-            matches: select(STORE_NAME).getPatternMatches(),
-            isGenerating: select(STORE_NAME).isGenerating(),
-            isAnalyzing: select(STORE_NAME).isAnalyzing(),
-        }),
-        []
-    );
+    const { prompt, matches, selectedPatterns, isGenerating, isAnalyzing } =
+        useSelect(
+            (select) => ({
+                prompt: select(STORE_NAME).getPrompt(),
+                matches: select(STORE_NAME).getPatternMatches(),
+                selectedPatterns: select(STORE_NAME).getSelectedPatterns(),
+                isGenerating: select(STORE_NAME).isGenerating(),
+                isAnalyzing: select(STORE_NAME).isAnalyzing(),
+            }),
+            []
+        );
 
-    const { analyzePattern, generateWithPattern, clearMatches } =
-        useDispatch(STORE_NAME);
+    const {
+        togglePattern,
+        analyzePatterns,
+        generateWithPatterns,
+        clearMatches,
+    } = useDispatch(STORE_NAME);
 
     if (!matches || matches.length === 0) {
         return null;
@@ -22,13 +33,12 @@ export default function PatternMatch({ postType, postId }) {
 
     const isBusy = isGenerating || isAnalyzing;
 
-    const handleUsePattern = (patternId) => {
-        // Run analysis first to check for ambiguities
-        analyzePattern(prompt, postType, postId, patternId);
+    const handleConfirmSelection = () => {
+        analyzePatterns(prompt, postType, postId, selectedPatterns);
     };
 
     const handleSkip = () => {
-        generateWithPattern(prompt, postType, postId, null);
+        generateWithPatterns(prompt, postType, postId, []);
     };
 
     const handleCancel = () => {
@@ -38,43 +48,50 @@ export default function PatternMatch({ postType, postId }) {
     return (
         <div className="taipb-pattern-match">
             <p className="taipb-pattern-match-heading">
-                We found matching patterns/layouts. Use one as a base?
+                Select patterns to use as a base:
             </p>
 
             <div className="taipb-pattern-match-list">
-                {matches.map((match) => (
-                    <Card
-                        key={match.id}
-                        size="small"
-                        className="taipb-pattern-match-item"
-                    >
-                        <CardHeader size="small">
-                            <span className="taipb-pattern-match-title">
-                                {match.title}
-                            </span>
-                            <span className="taipb-pattern-match-type">
-                                {match.type}
-                            </span>
-                        </CardHeader>
-                        <CardBody size="small">
-                            <Button
-                                variant="primary"
-                                size="small"
-                                onClick={() => handleUsePattern(match.id)}
-                                disabled={isBusy}
-                                isBusy={isAnalyzing}
-                                className="taipb-pattern-use-button"
-                            >
-                                {isAnalyzing
-                                    ? 'Analyzing...'
-                                    : 'Use this pattern'}
-                            </Button>
-                        </CardBody>
-                    </Card>
-                ))}
+                {matches.map((match) => {
+                    const isSelected = selectedPatterns.includes(match.id);
+                    return (
+                        <Card
+                            key={match.id}
+                            size="small"
+                            className={`taipb-pattern-match-item${isSelected ? ' taipb-pattern-match-item--selected' : ''}`}
+                            onClick={() => !isBusy && togglePattern(match.id)}
+                        >
+                            <CardHeader size="small">
+                                <CheckboxControl
+                                    __nextHasNoMarginBottom
+                                    checked={isSelected}
+                                    onChange={() => togglePattern(match.id)}
+                                    disabled={isBusy}
+                                />
+                                <span className="taipb-pattern-match-title">
+                                    {match.title}
+                                </span>
+                                <span className="taipb-pattern-match-type">
+                                    {match.type}
+                                </span>
+                            </CardHeader>
+                        </Card>
+                    );
+                })}
             </div>
 
             <div className="taipb-pattern-match-actions">
+                <Button
+                    variant="primary"
+                    onClick={handleConfirmSelection}
+                    disabled={isBusy || selectedPatterns.length === 0}
+                    isBusy={isAnalyzing}
+                    className="taipb-pattern-confirm-button"
+                >
+                    {isAnalyzing
+                        ? 'Analyzing...'
+                        : `Use ${selectedPatterns.length || ''} selected pattern${selectedPatterns.length !== 1 ? 's' : ''}`}
+                </Button>
                 <Button
                     variant="secondary"
                     onClick={handleSkip}

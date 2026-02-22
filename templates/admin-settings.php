@@ -6,6 +6,7 @@ if (!defined('ABSPATH')) {
 
 $settings = TimberlandAIPageBuilder\Plugin::get_settings();
 $has_api_key = defined('TAIPB_API_KEY') || !empty($settings['api_key']);
+$has_openai_key = defined('TAIPB_OPENAI_API_KEY') || !empty($settings['openai_api_key'] ?? '');
 $manifest_store = TimberlandAIPageBuilder\Plugin::get_manifest_store();
 $stats = $manifest_store->get_stats();
 ?>
@@ -39,12 +40,36 @@ $stats = $manifest_store->get_stats();
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row">Model</th>
+                    <th scope="row">OpenAI API Key</th>
+                    <td>
+                        <?php if (defined('TAIPB_OPENAI_API_KEY')): ?>
+                            <p class="description">API key is defined in <code>wp-config.php</code> via <code>TAIPB_OPENAI_API_KEY</code> constant.</p>
+                        <?php else: ?>
+                            <input type="password"
+                                   name="taipb_settings[openai_api_key]"
+                                   value="<?php echo esc_attr($settings['openai_api_key'] ?? ''); ?>"
+                                   class="regular-text"
+                                   autocomplete="off" />
+                            <p class="description">Your OpenAI API key (optional). Alternatively, define <code>TAIPB_OPENAI_API_KEY</code> in <code>wp-config.php</code>.</p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Default Model</th>
                     <td>
                         <select name="taipb_settings[model]">
-                            <option value="claude-sonnet-4-5-20250929" <?php selected($settings['model'], 'claude-sonnet-4-5-20250929'); ?>>Claude Sonnet 4.5</option>
-                            <option value="claude-opus-4-6" <?php selected($settings['model'], 'claude-opus-4-6'); ?>>Claude Opus 4.6</option>
+                            <optgroup label="Anthropic">
+                                <option value="claude-sonnet-4-5-20250929" <?php selected($settings['model'], 'claude-sonnet-4-5-20250929'); ?>>Claude Sonnet 4.5</option>
+                                <option value="claude-opus-4-6" <?php selected($settings['model'], 'claude-opus-4-6'); ?>>Claude Opus 4.6</option>
+                            </optgroup>
+                            <?php if ($has_openai_key): ?>
+                            <optgroup label="OpenAI">
+                                <option value="gpt-4o" <?php selected($settings['model'], 'gpt-4o'); ?>>GPT-4o</option>
+                                <option value="gpt-4.1" <?php selected($settings['model'], 'gpt-4.1'); ?>>GPT-4.1</option>
+                            </optgroup>
+                            <?php endif; ?>
                         </select>
+                        <p class="description">Default model for generation. Can be overridden per-generation from the editor sidebar.</p>
                     </td>
                 </tr>
                 <tr>
@@ -166,12 +191,22 @@ $stats = $manifest_store->get_stats();
             <h3 style="margin-top: 30px;">Environment</h3>
             <table class="form-table">
                 <tr>
-                    <th scope="row">API Key Status</th>
+                    <th scope="row">Anthropic API Key</th>
                     <td>
                         <?php if ($has_api_key): ?>
                             <span style="color: green;">&#10003; Configured</span>
                         <?php else: ?>
                             <span style="color: red;">&#10007; Not configured</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">OpenAI API Key</th>
+                    <td>
+                        <?php if ($has_openai_key): ?>
+                            <span style="color: green;">&#10003; Configured</span>
+                        <?php else: ?>
+                            <span style="color: #757575;">&#8212; Not configured (optional)</span>
                         <?php endif; ?>
                     </td>
                 </tr>

@@ -3,31 +3,34 @@ import { useSelect, useDispatch } from '@wordpress/data';
 import { STORE_NAME } from '../store';
 
 export default function ClarificationPanel({ postType, postId }) {
-    const { prompt, questions, answers, selectedPattern, isGenerating } =
+    const { prompt, questions, answers, selectedPatterns, isGenerating } =
         useSelect(
             (select) => ({
                 prompt: select(STORE_NAME).getPrompt(),
                 questions: select(STORE_NAME).getClarificationQuestions(),
                 answers: select(STORE_NAME).getClarificationAnswers(),
-                selectedPattern: select(STORE_NAME).getSelectedPattern(),
+                selectedPatterns: select(STORE_NAME).getSelectedPatterns(),
                 isGenerating: select(STORE_NAME).isGenerating(),
             }),
             []
         );
 
-    const { setClarificationAnswer, generateWithPattern, clearClarification } =
-        useDispatch(STORE_NAME);
+    const {
+        setClarificationAnswer,
+        generateWithPatterns,
+        clearClarification,
+    } = useDispatch(STORE_NAME);
 
     if (!questions || questions.length === 0) {
         return null;
     }
 
     const handleGenerate = () => {
-        generateWithPattern(
+        generateWithPatterns(
             prompt,
             postType,
             postId,
-            selectedPattern,
+            selectedPatterns,
             answers
         );
     };

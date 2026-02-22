@@ -26,7 +26,7 @@ class MarkupGenerator
      *
      * @return array{markup: string, validation: array, api_response: array}
      */
-    public function generate(string $prompt, string $post_type = 'page', ?int $post_id = null, ?string $use_pattern = null): array
+    public function generate(string $prompt, string $post_type = 'page', ?int $post_id = null, array $use_patterns = [], ?string $model = null): array
     {
         $user_id = get_current_user_id();
 
@@ -47,21 +47,27 @@ class MarkupGenerator
             $manifest = $this->manifest_store->regenerate();
         }
 
-        // Extract original image data from pattern before generation
+        // Extract original image data from ALL selected patterns before generation
         $pattern_image_data = [];
-        if ($use_pattern) {
-            $pattern_content = $this->resolve_pattern_content($use_pattern, $manifest);
+        foreach ($use_patterns as $pattern_id) {
+            $pattern_content = $this->resolve_pattern_content($pattern_id, $manifest);
             if ($pattern_content) {
-                $pattern_image_data = $this->extract_image_data($pattern_content, $manifest);
+                $images = $this->extract_image_data($pattern_content, $manifest);
+                foreach ($images as $block_name => $block_images) {
+                    $pattern_image_data[$block_name] = array_merge(
+                        $pattern_image_data[$block_name] ?? [],
+                        $block_images
+                    );
+                }
             }
         }
 
         // Build prompts
         $prompt_builder = new PromptBuilder($manifest);
-        $system_prompt = $prompt_builder->build($prompt, $post_type, $use_pattern);
+        $system_prompt = $prompt_builder->build($prompt, $post_type, $use_patterns);
 
-        // Call Claude API
-        $client = new ClaudeClient();
+        // Call LLM API (Claude or OpenAI based on model)
+        $client = LLMClientFactory::create($model);
         $api_response = $client->generate($system_prompt, $prompt);
 
         // Record rate limit usage
@@ -99,12 +105,17 @@ class MarkupGenerator
         // Post-process: fix all field companion keys and image fields
         $clean_markup = $this->post_process_markup($clean_markup, $manifest, $pattern_image_data, $prompt);
 
+        // Re-validate attributes after post-processing for accurate frontend results.
+        // Uses lightweight regex-based validation (no parse_blocks) since
+        // post-processing only fixes JSON attributes — block structure is unchanged.
+        $final_validation = $validator->validate_attributes($clean_markup, $validation['block_count']);
+
         // Save to history
-        $this->save_history($user_id, $prompt, $clean_markup, $post_id, $post_type, $api_response, $validation);
+        $this->save_history($user_id, $prompt, $clean_markup, $post_id, $post_type, $api_response, $final_validation);
 
         return [
             'markup' => $clean_markup,
-            'validation' => $validation,
+            'validation' => $final_validation,
             'api_response' => [
                 'model' => $api_response['model'],
                 'input_tokens' => $api_response['input_tokens'],
@@ -487,12 +498,29 @@ class MarkupGenerator
     }
 
     /**
-     * Strip markdown code fences from Claude output.
+     * Strip markdown code fences and any non-block text from LLM output.
+     *
+     * LLMs sometimes wrap block markup in markdown fences or add explanatory
+     * text before/after. This function extracts only the block comment content.
      */
     private function strip_markdown_fences(string $markup): string
     {
-        $markup = preg_replace('/^```(?:html)?\s*\n/i', '', $markup);
-        $markup = preg_replace('/\n```\s*$/', '', $markup);
+        // Remove markdown code fences (```html, ```xml, ``` etc.)
+        $markup = preg_replace('/^```(?:html|xml|php|plaintext)?\s*\n?/im', '', $markup);
+        $markup = preg_replace('/\n?```\s*$/m', '', $markup);
+
+        // Remove any text before the first block comment
+        $first_block = strpos($markup, '<!-- wp:');
+        if ($first_block !== false && $first_block > 0) {
+            $markup = substr($markup, $first_block);
+        }
+
+        // Remove any text after the last closing comment
+        $last_close = strrpos($markup, '-->');
+        if ($last_close !== false) {
+            $markup = substr($markup, 0, $last_close + 3);
+        }
+
         return trim($markup);
     }
 }
