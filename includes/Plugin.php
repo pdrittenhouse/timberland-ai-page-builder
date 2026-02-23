@@ -145,6 +145,7 @@ class Plugin
         $sanitized['allowed_roles'] = array_map('sanitize_text_field', $input['allowed_roles'] ?? $defaults['allowed_roles']);
         $sanitized['include_genesis_layouts'] = !empty($input['include_genesis_layouts']);
         $sanitized['include_editor_patterns'] = !empty($input['include_editor_patterns']);
+        $sanitized['custom_system_prompt'] = wp_kses_post($input['custom_system_prompt'] ?? $defaults['custom_system_prompt']);
 
         return $sanitized;
     }
@@ -161,6 +162,7 @@ class Plugin
             'allowed_roles' => ['administrator', 'editor'],
             'include_genesis_layouts' => true,
             'include_editor_patterns' => true,
+            'custom_system_prompt' => '',
         ];
     }
 

@@ -127,6 +127,15 @@ $stats = $manifest_store->get_stats();
                         </label>
                     </td>
                 </tr>
+                <tr>
+                    <th scope="row">Custom System Prompt</th>
+                    <td>
+                        <textarea name="taipb_settings[custom_system_prompt]"
+                                  rows="6"
+                                  class="large-text"><?php echo esc_textarea($settings['custom_system_prompt'] ?? ''); ?></textarea>
+                        <p class="description">Additional instructions appended to all LLM prompts. Use this to provide site-specific context like brand guidelines, preferred blocks, tone, or content rules.</p>
+                    </td>
+                </tr>
             </table>
 
             <?php submit_button(); ?>

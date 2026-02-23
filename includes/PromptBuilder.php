@@ -62,7 +62,25 @@ class PromptBuilder
             $sections[] = $this->build_patterns_section($user_prompt);
         }
 
+        $custom = $this->build_custom_prompt_section();
+        if ($custom) {
+            $sections[] = $custom;
+        }
+
         return implode("\n\n---\n\n", array_filter($sections));
+    }
+
+    /**
+     * Build custom system prompt section from site settings.
+     */
+    private function build_custom_prompt_section(): string
+    {
+        $custom = trim(Plugin::get_settings()['custom_system_prompt'] ?? '');
+        if ($custom === '') {
+            return '';
+        }
+
+        return "# SITE-SPECIFIC INSTRUCTIONS\n\n{$custom}";
     }
 
     /**

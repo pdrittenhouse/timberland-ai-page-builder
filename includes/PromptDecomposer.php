@@ -58,6 +58,12 @@ Rules:
 - If the user describes structural elements like sections/rows/columns without mentioning a specific component, still create a section entry describing the structure but leave pattern_hint and pattern_id empty
 PROMPT;
 
+        // Append custom system prompt if configured
+        $custom = trim(Plugin::get_settings()['custom_system_prompt'] ?? '');
+        if ($custom !== '') {
+            $system .= "\n\n# SITE-SPECIFIC INSTRUCTIONS\n\n{$custom}";
+        }
+
         // Try each client in cost order; first success wins
         $clients = $this->get_decomposer_clients();
         $last_error = null;
