@@ -207,6 +207,19 @@ class RestController
             ],
         ]);
 
+        register_rest_route(self::NAMESPACE, '/generate-pattern-notes', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_generate_pattern_notes'],
+            'permission_callback' => [$this, 'can_manage'],
+            'args' => [
+                'post_id' => [
+                    'required' => true,
+                    'type' => 'integer',
+                    'sanitize_callback' => 'absint',
+                ],
+            ],
+        ]);
+
         register_rest_route(self::NAMESPACE, '/history', [
             'methods' => 'GET',
             'callback' => [$this, 'handle_get_history'],
@@ -984,6 +997,137 @@ PROMPT;
         }
 
         return new \WP_Error('taipb_context_error', $message, ['status' => $status]);
+    }
+
+    /**
+     * POST /generate-pattern-notes — Analyze a pattern's content and generate usage notes.
+     */
+    public function handle_generate_pattern_notes(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
+    {
+        $post_id = $request->get_param('post_id');
+        $post = get_post($post_id);
+
+        if (!$post || $post->post_type !== 'wp_block') {
+            return new \WP_Error('taipb_invalid_pattern', 'Pattern not found.', ['status' => 404]);
+        }
+
+        $content = $post->post_content;
+        if (empty(trim($content))) {
+            return new \WP_Error('taipb_empty_pattern', 'This pattern has no content to analyze.', ['status' => 400]);
+        }
+
+        // Extract block names and meaningful data from pattern markup
+        $block_summary = [];
+        preg_match_all(
+            '/<!-- wp:(acf\/[a-z0-9-]+|[a-z0-9-]+\/[a-z0-9-]+|[a-z0-9-]+) (?:\{(.*?)\} )?(?:\/)?-->/s',
+            $content,
+            $matches,
+            PREG_SET_ORDER
+        );
+
+        foreach ($matches as $match) {
+            $block_name = $match[1];
+            $json_data = isset($match[2]) ? json_decode('{' . $match[2] . '}', true) : null;
+            if (!$json_data) {
+                $json_data = isset($match[2]) ? json_decode($match[2], true) : null;
+            }
+
+            $entry = $block_name;
+            if ($json_data) {
+                $data = $json_data['data'] ?? $json_data;
+                $meaningful = [];
+                foreach ($data as $key => $value) {
+                    if (str_starts_with($key, '_') || $value === '' || $value === null) {
+                        continue;
+                    }
+                    if (in_array($key, ['mode', 'alignText', 'alignContent', 'name'], true)) {
+                        continue;
+                    }
+                    if (is_string($value) && strlen($value) > 80) {
+                        $value = substr($value, 0, 77) . '...';
+                    }
+                    if (!is_array($value)) {
+                        $meaningful[$key] = $value;
+                    }
+                }
+                if (!empty($meaningful)) {
+                    $pairs = [];
+                    foreach (array_slice($meaningful, 0, 5) as $k => $v) {
+                        $pairs[] = "{$k}: {$v}";
+                    }
+                    $entry .= ' (' . implode(', ', $pairs) . ')';
+                }
+            }
+            $block_summary[] = $entry;
+        }
+
+        // Also extract any visible text content
+        $text_content = wp_strip_all_tags(do_blocks($content));
+        if (strlen($text_content) > 500) {
+            $text_content = substr($text_content, 0, 500) . '...';
+        }
+
+        // Get categories
+        $categories = [];
+        $terms = get_the_terms($post_id, 'wp_pattern_category');
+        if ($terms && !is_wp_error($terms)) {
+            $categories = wp_list_pluck($terms, 'name');
+        }
+
+        $user_prompt = "Pattern: {$post->post_title}\n";
+        if (!empty($categories)) {
+            $user_prompt .= "Categories: " . implode(', ', $categories) . "\n";
+        }
+        $user_prompt .= "\nBlocks used:\n- " . implode("\n- ", $block_summary) . "\n";
+        if (!empty(trim($text_content))) {
+            $user_prompt .= "\nVisible text content:\n{$text_content}\n";
+        }
+
+        $system = <<<'PROMPT'
+You are a WordPress pattern analyst. Given information about a Gutenberg block pattern (its name, categories, blocks used, and visible text content), generate concise usage notes for an AI layout generator.
+
+Your output should describe:
+- What this pattern is designed for (e.g., "Hero section for product landing pages")
+- When to use it (e.g., "Use at the top of marketing pages when a full-width hero with CTA is needed")
+- Any important structural notes (e.g., "Contains a 3-column card grid — best for exactly 3 items")
+- Content expectations (e.g., "Expects a headline, subheadline, and call-to-action button text")
+
+Output 2-4 sentences of plain text instructions. Be specific and practical. Write in imperative form.
+Do not describe the blocks themselves — focus on when and how to use this pattern as a whole.
+PROMPT;
+
+        // Use cheap model first
+        $settings = Plugin::get_settings();
+        $has_anthropic = defined('TAIPB_API_KEY') || !empty($settings['api_key']);
+        $has_openai = defined('TAIPB_OPENAI_API_KEY') || !empty($settings['openai_api_key']);
+
+        $clients = [];
+        if ($has_anthropic) {
+            $clients[] = new ClaudeClient('claude-haiku-4-5-20251001');
+        }
+        if ($has_openai) {
+            $clients[] = new OpenAIClient('gpt-4o-mini');
+        }
+        $clients[] = LLMClientFactory::create();
+
+        $last_error = null;
+        foreach ($clients as $client) {
+            try {
+                $response = $client->generate($system, $user_prompt);
+                return new \WP_REST_Response([
+                    'notes' => trim($response['content']),
+                ], 200);
+            } catch (\Throwable $e) {
+                $last_error = $e;
+                continue;
+            }
+        }
+
+        return new \WP_Error(
+            'taipb_generate_notes_error',
+            'Failed to generate notes: ' . ($last_error?->getMessage() ?? 'no LLM clients available'),
+            ['status' => 500]
+        );
     }
 
     /**

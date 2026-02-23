@@ -39,6 +39,9 @@ class Plugin
 
         // Editor assets
         add_action('enqueue_block_editor_assets', [$this, 'enqueue_editor_assets']);
+
+        // Pattern meta (usage notes on wp_block post type)
+        add_action('init', [$this, 'register_pattern_meta']);
     }
 
     public function activate(): void
@@ -197,6 +200,24 @@ class Plugin
         return $models;
     }
 
+    public function register_pattern_meta(): void
+    {
+        if (!post_type_supports('wp_block', 'custom-fields')) {
+            add_post_type_support('wp_block', 'custom-fields');
+        }
+
+        register_post_meta('wp_block', 'taipb_usage_notes', [
+            'show_in_rest' => true,
+            'single' => true,
+            'type' => 'string',
+            'default' => '',
+            'sanitize_callback' => 'sanitize_textarea_field',
+            'auth_callback' => function () {
+                return current_user_can('edit_posts');
+            },
+        ]);
+    }
+
     private function create_history_table(): void
     {
         global $wpdb;
@@ -238,6 +259,7 @@ class Plugin
                 echo '<div class="notice notice-success is-dismissible"><p>Manifest regenerated successfully.</p></div>';
             });
         }
+
     }
 
     /**

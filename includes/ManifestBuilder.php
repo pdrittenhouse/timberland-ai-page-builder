@@ -241,7 +241,7 @@ class ManifestBuilder
                 'title' => $post->post_title,
                 'categories' => $categories,
                 'content' => $post->post_content,
-                'usage_notes' => '',
+                'usage_notes' => get_post_meta($post->ID, 'taipb_usage_notes', true) ?: '',
             ];
         }
 
