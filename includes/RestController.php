@@ -194,6 +194,19 @@ class RestController
             ],
         ]);
 
+        register_rest_route(self::NAMESPACE, '/generate-context', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_generate_context'],
+            'permission_callback' => [$this, 'can_manage'],
+            'args' => [
+                'post_types' => [
+                    'required' => true,
+                    'type' => 'array',
+                    'items' => ['type' => 'string'],
+                ],
+            ],
+        ]);
+
         register_rest_route(self::NAMESPACE, '/history', [
             'methods' => 'GET',
             'callback' => [$this, 'handle_get_history'],
@@ -845,6 +858,132 @@ class RestController
         ], [
             '%d', '%s', '%s', '%d', '%s', '%s', '%d', '%d', '%s', '%s',
         ]);
+    }
+
+    /**
+     * POST /generate-context — Analyze site content and generate custom system prompt text.
+     */
+    public function handle_generate_context(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
+    {
+        $post_types = $request->get_param('post_types');
+        if (empty($post_types)) {
+            return new \WP_Error('taipb_no_post_types', 'Select at least one post type.', ['status' => 400]);
+        }
+
+        // Sanitize post type names
+        $post_types = array_map('sanitize_key', $post_types);
+
+        // Fetch sample content from each post type
+        $samples = [];
+        foreach ($post_types as $pt) {
+            $pt_object = get_post_type_object($pt);
+            if (!$pt_object || !$pt_object->public) {
+                continue;
+            }
+
+            $posts = get_posts([
+                'post_type' => $pt,
+                'post_status' => 'publish',
+                'posts_per_page' => 5,
+                'orderby' => 'date',
+                'order' => 'DESC',
+            ]);
+
+            foreach ($posts as $post) {
+                $content = wp_strip_all_tags(strip_shortcodes($post->post_content));
+                if (strlen($content) > 500) {
+                    $content = substr($content, 0, 500) . '...';
+                }
+
+                $samples[] = [
+                    'type' => $pt_object->labels->singular_name,
+                    'title' => $post->post_title,
+                    'content' => $content,
+                ];
+            }
+        }
+
+        if (empty($samples)) {
+            return new \WP_Error(
+                'taipb_no_content',
+                'No published content found in the selected post types.',
+                ['status' => 404]
+            );
+        }
+
+        // Build the user prompt with content samples and manifest context
+        $store = Plugin::get_manifest_store();
+        $manifest = $store->get();
+
+        $user_prompt = "## SITE CONTENT SAMPLES\n\n";
+        foreach ($samples as $sample) {
+            $user_prompt .= "### {$sample['type']}: {$sample['title']}\n{$sample['content']}\n\n";
+        }
+
+        // Add available blocks and patterns
+        $user_prompt .= "## AVAILABLE BLOCKS\n";
+        foreach ($manifest['blocks'] ?? [] as $name => $block) {
+            $user_prompt .= "- {$block['title']} ({$name})\n";
+        }
+
+        $user_prompt .= "\n## AVAILABLE PATTERNS\n";
+        foreach ($manifest['patterns'] ?? [] as $pattern) {
+            $user_prompt .= "- {$pattern['title']}\n";
+        }
+        foreach ($manifest['layouts'] ?? [] as $layout) {
+            $user_prompt .= "- {$layout['name']} ({$layout['type']})\n";
+        }
+
+        $system = <<<'PROMPT'
+You are a site analyst. Given sample content from a WordPress site and its available blocks/patterns, generate concise site-specific instructions for an AI layout generator.
+
+Your output should include:
+- A brief description of the site's purpose and target audience (inferred from content)
+- Brand/product names and their accurate descriptions (extracted from content — do not invent)
+- Tone and style guidelines (inferred from content voice)
+- When the user prompt mentions specific products or brands found in the content, instruct the generator to prefer blocks and patterns whose name or title contains those terms
+- Content rules (heading hierarchy, CTA language, any conventions observed)
+
+Output plain text instructions (not JSON, not markdown fences). Write in imperative form suitable for appending to an AI system prompt.
+Keep it under 500 words. Be specific and factual — only reference products, names, and features that actually appear in the content samples.
+PROMPT;
+
+        // Use cheap model first, same pattern as PromptDecomposer
+        $settings = Plugin::get_settings();
+        $has_anthropic = defined('TAIPB_API_KEY') || !empty($settings['api_key']);
+        $has_openai = defined('TAIPB_OPENAI_API_KEY') || !empty($settings['openai_api_key']);
+
+        $clients = [];
+        if ($has_anthropic) {
+            $clients[] = new ClaudeClient('claude-haiku-4-5-20251001');
+        }
+        if ($has_openai) {
+            $clients[] = new OpenAIClient('gpt-4o-mini');
+        }
+        $clients[] = LLMClientFactory::create();
+
+        $last_error = null;
+        foreach ($clients as $client) {
+            try {
+                $response = $client->generate($system, $user_prompt);
+                return new \WP_REST_Response([
+                    'context' => $response['content'],
+                ], 200);
+            } catch (\Throwable $e) {
+                $last_error = $e;
+                continue;
+            }
+        }
+
+        $message = 'Failed to generate context: ' . ($last_error?->getMessage() ?? 'no LLM clients available');
+        $status = 500;
+        if ($last_error && str_contains($last_error->getMessage(), 'API key')) {
+            $status = 401;
+        } elseif ($last_error && str_contains($last_error->getMessage(), 'credit balance')) {
+            $status = 402;
+        }
+
+        return new \WP_Error('taipb_context_error', $message, ['status' => $status]);
     }
 
     /**

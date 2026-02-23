@@ -131,9 +131,30 @@ $stats = $manifest_store->get_stats();
                     <th scope="row">Custom System Prompt</th>
                     <td>
                         <textarea name="taipb_settings[custom_system_prompt]"
+                                  id="taipb-custom-system-prompt"
                                   rows="6"
                                   class="large-text"><?php echo esc_textarea($settings['custom_system_prompt'] ?? ''); ?></textarea>
                         <p class="description">Additional instructions appended to all LLM prompts. Use this to provide site-specific context like brand guidelines, preferred blocks, tone, or content rules.</p>
+                        <div id="taipb-context-generator" style="margin-top: 12px;">
+                            <p><strong>Auto-generate from site content:</strong></p>
+                            <fieldset id="taipb-context-post-types" style="margin: 8px 0;">
+                                <?php
+                                $manifest = $manifest_store->get();
+                                foreach ($manifest['post_types'] ?? [] as $pt):
+                                ?>
+                                    <label style="display: inline-block; margin-right: 12px;">
+                                        <input type="checkbox" class="taipb-context-pt"
+                                               value="<?php echo esc_attr($pt['name']); ?>"
+                                               <?php echo in_array($pt['name'], ['page', 'post'], true) ? 'checked' : ''; ?> />
+                                        <?php echo esc_html($pt['label']); ?>
+                                    </label>
+                                <?php endforeach; ?>
+                            </fieldset>
+                            <button type="button" id="taipb-generate-context-btn" class="button button-secondary">
+                                Generate Context
+                            </button>
+                            <span id="taipb-context-status" style="margin-left: 8px; font-style: italic;"></span>
+                        </div>
                     </td>
                 </tr>
             </table>
@@ -243,4 +264,59 @@ $stats = $manifest_store->get_stats();
             document.getElementById('diagnostics-tab').style.display = this.getAttribute('href') === '#diagnostics' ? '' : 'none';
         });
     });
+
+    // Auto-generate context from site content
+    (function() {
+        var btn = document.getElementById('taipb-generate-context-btn');
+        var status = document.getElementById('taipb-context-status');
+        var textarea = document.getElementById('taipb-custom-system-prompt');
+        var restUrl = <?php echo wp_json_encode(rest_url('taipb/v1/')); ?>;
+        var nonce = <?php echo wp_json_encode(wp_create_nonce('wp_rest')); ?>;
+
+        btn.addEventListener('click', function() {
+            var checked = document.querySelectorAll('.taipb-context-pt:checked');
+            var postTypes = Array.from(checked).map(function(cb) { return cb.value; });
+
+            if (postTypes.length === 0) {
+                status.textContent = 'Select at least one post type.';
+                status.style.color = '#cc1818';
+                return;
+            }
+
+            btn.disabled = true;
+            status.textContent = 'Analyzing site content...';
+            status.style.color = '#757575';
+
+            fetch(restUrl + 'generate-context', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': nonce
+                },
+                body: JSON.stringify({ post_types: postTypes })
+            })
+            .then(function(response) {
+                return response.json().then(function(data) {
+                    return { ok: response.ok, data: data };
+                });
+            })
+            .then(function(result) {
+                btn.disabled = false;
+                if (result.ok && result.data.context) {
+                    textarea.value = result.data.context;
+                    status.textContent = 'Done — review and save settings.';
+                    status.style.color = 'green';
+                } else {
+                    var msg = (result.data && result.data.message) || 'An error occurred.';
+                    status.textContent = msg;
+                    status.style.color = '#cc1818';
+                }
+            })
+            .catch(function(err) {
+                btn.disabled = false;
+                status.textContent = 'Network error: ' + err.message;
+                status.style.color = '#cc1818';
+            });
+        });
+    })();
 </script>
