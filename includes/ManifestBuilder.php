@@ -14,9 +14,14 @@ class ManifestBuilder
 {
     private FieldKeyMap $field_key_map;
 
-    public function __construct(FieldKeyMap $field_key_map)
+    private CuratedContext $curated;
+
+    public function __construct(FieldKeyMap $field_key_map, ?CuratedContext $curated = null)
     {
         $this->field_key_map = $field_key_map;
+        // Defaulted rather than required so existing callers keep working; injectable so the
+        // unit suite can point it at a fixture directory instead of a live theme.
+        $this->curated = $curated ?? new CuratedContext();
     }
 
     /**
@@ -44,138 +49,85 @@ class ManifestBuilder
         // Derive nesting rules from block data
         $manifest['nesting_rules'] = $this->derive_nesting_rules($manifest['blocks']);
 
+        // A missing curated artifact is a broken install, not a supported configuration: this
+        // plugin ships against the framework and its themes, whose build emits them. Recorded
+        // in the manifest so it is visible wherever the manifest is -- the /manifest endpoint,
+        // the admin screen -- rather than showing up as prompts that are quietly worse.
+        $missing = $this->curated->missing();
+
+        if ($missing !== []) {
+            $manifest['curation_missing'] = $missing;
+        }
+
         return $manifest;
     }
 
     /**
-     * Collect ACF blocks from block.json files in parent and child themes.
+     * Collect ACF blocks from WordPress's own block registry.
+     *
+     * This used to walk `block.json` files across directories it had hardcoded per tier, and it
+     * was wrong in two ways at once on any install that is not natural-rose. Measured
+     * 2026-11-09 against updater-starter: the framework path it looked under was
+     * `vendor/pdrittenhouse/timberland`, but that install's vendor namespace is
+     * `vendor/updater/updater-framework`, so **all 41 framework blocks were invisible**; and it
+     * included `timberland-extended`, which is present on disk there but NOT ACTIVE, so 7
+     * blocks WordPress will never render were in the manifest. 19 blocks found where the
+     * registry reports 53.
+     *
+     * `WP_Block_Type_Registry` has no such problem, because it is not a guess. It returns the
+     * blocks that are actually registered — resolved across framework, plugin, parent and child
+     * by the tier machinery itself, and filtered by plugin activation, which no build-time
+     * artifact and no directory scan can see. Counts match the framework build exactly: 48 on
+     * natural-rose, 53 on updater-starter.
+     *
+     * `WP_Block_Type` carries everything the old scan read out of `block.json` — `title`,
+     * `description`, `category`, `keywords`, `parent`, `supports`, context — so nothing is
+     * lost. Verified on a live install: all 48 blocks report a title, description, keywords and
+     * category, and 42 declare `supports.jsx`.
+     *
+     * `usage_notes` is the one field the registry cannot supply, and the only thing read from
+     * the build. See {@see CuratedContext}.
+     *
+     * @param  array<string, array<string, string>> $block_field_maps  field name => ACF key
+     * @param  array<string, array<string, string>> $block_field_types field name => ACF type
+     * @return array<string, array<string, mixed>>
      */
     private function collect_blocks(array $block_field_maps, array $block_field_types = []): array
     {
         $blocks = [];
 
-        $block_dirs = $this->get_block_directories();
-
-        foreach ($block_dirs as $directory) {
-            if (!is_dir($directory)) {
+        foreach (\WP_Block_Type_Registry::get_instance()->get_all_registered() as $name => $block_type) {
+            // ACF blocks only. Core and third-party blocks are registered here too, and the
+            // manifest describes what this stack can compose, not everything on the site.
+            if (!str_starts_with($name, 'acf/')) {
                 continue;
             }
 
-            $entries = scandir($directory);
-            if (!$entries) {
-                continue;
-            }
+            $supports = is_array($block_type->supports) ? $block_type->supports : [];
 
-            foreach ($entries as $entry) {
-                // Skip hidden files and non-directories
-                if (str_starts_with($entry, '.') || !is_dir($directory . '/' . $entry)) {
-                    continue;
-                }
-
-                $block_json_path = $directory . '/' . $entry . '/block.json';
-                if (!file_exists($block_json_path)) {
-                    continue;
-                }
-
-                $content = file_get_contents($block_json_path);
-                if ($content === false) {
-                    continue;
-                }
-
-                $block_json = json_decode($content, true);
-                if (!$block_json || empty($block_json['name'])) {
-                    continue;
-                }
-
-                $name = $block_json['name'];
-                $is_container = !empty($block_json['supports']['jsx']);
-
-                $blocks[$name] = [
-                    'name' => $name,
-                    'title' => $block_json['title'] ?? $entry,
-                    'description' => $block_json['description'] ?? '',
-                    'category' => $block_json['category'] ?? '',
-                    'keywords' => $block_json['keywords'] ?? [],
-                    'is_container' => $is_container,
-                    'parent' => $block_json['parent'] ?? null,
-                    'provides_context' => !empty($block_json['providesContext']),
-                    'uses_context' => !empty($block_json['usesContext']),
-                    'supports' => $this->simplify_supports($block_json['supports'] ?? []),
-                    'field_key_map' => $block_field_maps[$name] ?? [],
-                    'field_type_map' => $block_field_types[$name] ?? [],
-                    'field_count' => count($block_field_maps[$name] ?? []),
-                    'usage_notes' => '',
-                ];
-            }
+            $blocks[$name] = [
+                'name' => $name,
+                'title' => (string) $block_type->title,
+                'description' => (string) $block_type->description,
+                'category' => (string) $block_type->category,
+                'keywords' => is_array($block_type->keywords) ? $block_type->keywords : [],
+                // InnerBlocks support is what makes a block a container, exactly as before --
+                // the same key, read from the same data, via the registry rather than the file.
+                'is_container' => !empty($supports['jsx']),
+                'parent' => is_array($block_type->parent) ? $block_type->parent : null,
+                'provides_context' => !empty($block_type->provides_context),
+                'uses_context' => !empty($block_type->uses_context),
+                'supports' => $this->simplify_supports($supports),
+                'field_key_map' => $block_field_maps[$name] ?? [],
+                'field_type_map' => $block_field_types[$name] ?? [],
+                'field_count' => count($block_field_maps[$name] ?? []),
+                'usage_notes' => $this->curated->usage_notes_for($name),
+            ];
         }
 
-        // Sort blocks alphabetically by name
         ksort($blocks);
 
         return $blocks;
-    }
-
-    /**
-     * Block directories, across every tier that can register one.
-     *
-     * AM1 -- this looked only at the parent and child themes, and **both hold zero block.json
-     * files**. Measured on a four-tier install: the 48 blocks are 41 in the framework
-     * (`vendor/pdrittenhouse/timberland`) and 7 in the timberland-extended plugin. So this
-     * returned two directories that exist and are empty, and the manifest had no blocks at all.
-     *
-     * The authority is `block-manifest.json`, which the framework's BlockManifestPlugin already
-     * emits with every block and the tier it came from. Re-deriving tier resolution in PHP would
-     * be a second implementation of something this stack has already got wrong twice -- the
-     * plugin pattern roots, and the tier-union erasure -- so the manifest is read first and
-     * directory scanning is only the fallback for an install that has never been built.
-     *
-     * @return array<int, string> directories to scan, empty when the manifest supplied the data
-     */
-    private function get_block_directories(): array
-    {
-        $dirs = [];
-
-        // Framework first, then plugin, then parent, then child: the precedence the other
-        // manifest readers use, so a later tier's block.json wins on a slug collision.
-        $candidates = [
-            get_template_directory() . '/vendor/pdrittenhouse/timberland/src/templates/blocks',
-            WP_PLUGIN_DIR . '/timberland-extended/src/templates/blocks',
-            get_template_directory() . '/src/templates/blocks',
-            get_stylesheet_directory() . '/src/templates/blocks',
-        ];
-
-        foreach ($candidates as $dir) {
-            if (is_dir($dir) && !in_array($dir, $dirs, true)) {
-                $dirs[] = $dir;
-            }
-        }
-
-        return $dirs;
-    }
-
-    /**
-     * Read a built manifest from the tier that owns it.
-     *
-     * The parent theme's copy is authoritative: the child build reads the parent's rather than
-     * producing its own, which is the same topology the pattern manifest already uses.
-     *
-     * @param  string $name file name, e.g. `block-manifest.json`
-     * @return array<string, mixed>|null the decoded manifest, or null when none is on disk
-     */
-    private function read_built_manifest(string $name): ?array
-    {
-        foreach ([get_template_directory(), get_stylesheet_directory()] as $base) {
-            $path = $base . '/src/manifests/' . $name;
-            if (!is_readable($path)) {
-                continue;
-            }
-            $decoded = json_decode((string) file_get_contents($path), true);
-            if (is_array($decoded)) {
-                return $decoded;
-            }
-        }
-
-        return null;
     }
 
     /**

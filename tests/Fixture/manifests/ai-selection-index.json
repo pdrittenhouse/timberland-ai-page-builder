@@ -1,0 +1,16 @@
+{
+  "envelope": "1.0.0",
+  "tokens": 120,
+  "entries": [
+    {
+      "slug": "section",
+      "best_for": "Grouping related content into a full-width band with its own background.",
+      "avoid_when": "Use a Card Grid instead when the children are peer items rather than a composed layout."
+    },
+    {
+      "slug": "card",
+      "best_for": "A short teaser linking to a longer page.",
+      "avoid_when": "Avoid when the content is the destination rather than a pointer to one."
+    }
+  ]
+}

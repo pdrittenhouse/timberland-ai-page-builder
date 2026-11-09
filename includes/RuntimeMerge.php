@@ -202,8 +202,11 @@ class RuntimeMerge
         $out = [];
         foreach (\WP_Block_Type_Registry::get_instance()->get_all_registered() as $name => $type) {
             $out[$name] = [
-                'description' => (string) ($type->description ?? ''),
-                'title' => (string) ($type->title ?? ''),
+                // No `?? ''`: WP_Block_Type declares both `@var string` with a default of
+                // '', so they are never null and the coalesce was dead. Removing it deleted
+                // two phpstan baseline entries rather than carrying them.
+                'description' => (string) $type->description,
+                'title' => (string) $type->title,
                 'parent' => $type->parent ?? null,
             ];
         }

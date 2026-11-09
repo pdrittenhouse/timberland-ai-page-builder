@@ -12,11 +12,17 @@
 #       ACF JSON path list and the plugin depends on that; php-stubs/acf-pro-stubs declares it
 #       `void`. Not fixable here without shipping a stub override.
 #
-#   OpenAIClient / promptTokens, RuntimeMerge / WP_Block_Type::$description and ::$title
-#       Defensive `??` against properties the stubs declare non-nullable. The `??` stays:
-#       WordPress can leave a dynamically registered block type's title and description unset,
-#       whatever the stub says, and removing the guard to satisfy an optimistic signature
-#       trades a real runtime guard for a clean report.
+#   OpenAIClient / promptTokens
+#       A defensive `??` against a property the OpenAI SDK declares non-nullable. Kept: the
+#       value comes from a parsed API response, and the SDK's own type is a promise about the
+#       wire format rather than a guarantee.
+#
+#   (REMOVED) RuntimeMerge / WP_Block_Type::$description and ::$title
+#       This entry previously claimed WordPress could leave these unset on a dynamically
+#       registered block type. That was WRONG, and checking it was the point: `WP_Block_Type`
+#       declares both `@var string` with a default of `''`, so they are never null and the
+#       `??` was dead code. Fixed in the source instead, which deleted two entries from here.
+#       Recorded because the wrong rationale is the kind of thing that gets copied forward.
 #
 #   ManifestBuilder::read_built_manifest() is unused, and the RestController `??`/nullsafe
 #   findings
@@ -33,12 +39,6 @@ parameters:
 			identifier: function.void
 			count: 1
 			path: includes/FieldKeyMap.php
-
-		-
-			message: '#^Method TimberlandAIPageBuilder\\ManifestBuilder\:\:read_built_manifest\(\) is unused\.$#'
-			identifier: method.unused
-			count: 1
-			path: includes/ManifestBuilder.php
 
 		-
 			message: '#^Property OpenAI\\Responses\\Chat\\CreateResponseUsage\:\:\$promptTokens \(int\) on left side of \?\? is not nullable\.$#'
@@ -63,15 +63,3 @@ parameters:
 			identifier: nullsafe.neverNull
 			count: 2
 			path: includes/RestController.php
-
-		-
-			message: '#^Property WP_Block_Type\:\:\$description \(string\) on left side of \?\? is not nullable\.$#'
-			identifier: nullCoalesce.property
-			count: 1
-			path: includes/RuntimeMerge.php
-
-		-
-			message: '#^Property WP_Block_Type\:\:\$title \(string\) on left side of \?\? is not nullable\.$#'
-			identifier: nullCoalesce.property
-			count: 1
-			path: includes/RuntimeMerge.php
