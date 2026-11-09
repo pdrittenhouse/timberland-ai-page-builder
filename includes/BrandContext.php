@@ -35,11 +35,38 @@ namespace TimberlandAIPageBuilder;
 class BrandContext
 {
     /**
-     * Option field roots considered brand context by default.
+     * Option field roots that describe how the site LOOKS.
      *
-     * Deliberately short. Everything else is layout or feature configuration.
+     * Chosen by what each field means, not by what this install happens to have set: 20 of the
+     * 50 roots are entirely empty here, including every obviously-brand one, but the same code
+     * runs where they are filled in.
+     *
+     *   page      page-header colours, font size, margins  (`bg_color = palette`)
+     *   sidebar   sidebar colours and width                (`text_color = palette`)
+     *   bg        site background image
+     *   brand     `brand_height` -- logo height, used when the logo is not an SVG
+     *   co        `co_brand` -- co-branding image
+     *   font      `font_sources` -- which typefaces load
+     *
+     * Deliberately NOT included, with reasons taken from the fields' own definitions rather than
+     * from their names:
+     *
+     *   org       "Used in Organization structured data" -- schema.org/SEO, not styling
+     *   navbar    "Set to XS to disable desktop navigation" -- responsive behaviour
+     *   site      header/footer layout SELECTION, not appearance
+     *   grid      default column count; layout density, not identity
+     *   hamburger a `Block: Menu` field, not a site option at all
+     *   header,
+     *   footer    the largest roots by value count (24 set each) but they hold CONTENT --
+     *             `header_alert_message`, `footer_contact_address`
+     *
+     * Everything else is analytics, consent, feature flags or indexing: csp, gtm, ga, google,
+     * bing, facebook, onetrust, llms, rest, selective, feature, enable, remove, disable, fluid,
+     * advanced, inline, hide, include, default, left, max, shrink, toggle, hover, nav, post,
+     * alert, genesis, gf, traveling, tcta, custom. That is where most of the 425 rows live,
+     * which is why the filter pays for itself.
      */
-    private const DEFAULT_ROOTS = ['bg', 'custom', 'content'];
+    private const DEFAULT_ROOTS = ['page', 'sidebar', 'bg', 'brand', 'co', 'font'];
 
     /** @var array<int, string> */
     private array $roots;
@@ -120,9 +147,18 @@ class BrandContext
 
         $out = [];
         foreach ($this->roots as $root) {
-            $like = 'options_' . $wpdb->esc_like((string) $root) . '%';
+            // Match on the SEGMENT boundary, not the bare prefix. `options_co%` also matches
+            // `options_container_relative`, so the `co` root (meaning `co_brand`) silently pulled
+            // in an unrelated container setting. A root is `options_<root>_...`, or the whole
+            // name when the field has no sub-fields.
+            $escaped = $wpdb->esc_like((string) $root);
             $rows = $wpdb->get_results(
-                $wpdb->prepare("SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s", $like),
+                $wpdb->prepare(
+                    "SELECT option_name, option_value FROM {$wpdb->options}
+                     WHERE option_name LIKE %s OR option_name = %s",
+                    'options_' . $escaped . '\_%',
+                    'options_' . $root
+                ),
                 ARRAY_A
             );
             foreach ((array) $rows as $row) {
