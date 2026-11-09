@@ -229,10 +229,21 @@ RULES;
                 $output .= "Pattern reference: {$section['pattern_hint']}\n";
             }
 
+            // `PromptDecomposer` asks the model for `"content": { ... }` and validates only
+            // that a `sections` key came back, not that each section's content is an object. A
+            // model returning a plain string there is a routine deviation, and iterating it
+            // unguarded emitted a PHP warning and dropped that section's content from the
+            // prompt entirely -- so the next model built a tree from an incomplete plan and
+            // nothing reported it. A string is kept as the section's content rather than
+            // discarded, because it is still what the planner meant.
             if (!empty($section['content'])) {
-                foreach ($section['content'] as $key => $value) {
-                    if (!empty($value)) {
-                        $output .= "  {$key}: {$value}\n";
+                if (is_scalar($section['content'])) {
+                    $output .= "  content: {$section['content']}\n";
+                } elseif (is_array($section['content'])) {
+                    foreach ($section['content'] as $key => $value) {
+                        if (!empty($value) && is_scalar($value)) {
+                            $output .= "  {$key}: {$value}\n";
+                        }
                     }
                 }
             }
