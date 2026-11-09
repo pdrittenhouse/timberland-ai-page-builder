@@ -47,18 +47,38 @@ class FieldKeyMap
         // Load only Block: and Module: field groups
         $this->load_relevant_groups();
 
+        /**
+         * `block == all` is an ACF WILDCARD, not a block name.
+         *
+         * `Block: Buttons` targets every block that way. Taking the rule's value literally
+         * created a pseudo-block called `all` holding 157 keys, and those keys then reached NO
+         * real block: `acf/section` carried 0 of them and `acf/card` only 3, by coincidental name
+         * overlap. So a writer setting `button_list` on any block had no `field_xxx` key for it,
+         * silently -- the same shape as the two other lookups in this class that found nothing.
+         *
+         * Wildcard groups are collected here and merged into every block below.
+         */
+        $wildcard = ['fields' => [], 'types' => []];
+
         // For each group that targets a block, build the field key map
         foreach ($this->group_cache as $group_key => $group) {
             $block_names = $this->extract_block_targets($group);
 
             foreach ($block_names as $block_name) {
+                $types = [];
+                $fields = $this->flatten_fields($group['fields'] ?? [], '', 0, $types);
+
+                if ($block_name === 'all') {
+                    $wildcard['fields'] = array_merge($wildcard['fields'], $fields);
+                    $wildcard['types'] = array_merge($wildcard['types'], $types);
+                    continue;
+                }
+
                 if (!isset($this->block_field_maps[$block_name])) {
                     $this->block_field_maps[$block_name] = [];
                     $this->block_field_types[$block_name] = [];
                 }
 
-                $types = [];
-                $fields = $this->flatten_fields($group['fields'] ?? [], '', 0, $types);
                 $this->block_field_maps[$block_name] = array_merge(
                     $this->block_field_maps[$block_name],
                     $fields
@@ -66,6 +86,18 @@ class FieldKeyMap
                 $this->block_field_types[$block_name] = array_merge(
                     $this->block_field_types[$block_name],
                     $types
+                );
+            }
+        }
+
+        // A block's own fields win over a wildcard's on a name collision: the block declared it
+        // deliberately, the wildcard applies to everything.
+        if ($wildcard['fields']) {
+            foreach ($this->block_field_maps as $block_name => $map) {
+                $this->block_field_maps[$block_name] = array_merge($wildcard['fields'], $map);
+                $this->block_field_types[$block_name] = array_merge(
+                    $wildcard['types'],
+                    $this->block_field_types[$block_name] ?? []
                 );
             }
         }
