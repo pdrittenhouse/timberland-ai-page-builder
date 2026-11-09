@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Pure-logic unit tests for the AI page builder. No WordPress, no network, no LLM.
+
+  Deliberately excludes anything that calls an LLM. An eval suite that makes real API calls is a
+  separate concern with its own command, cadence and cost — wiring it in here would make this
+  suite non-deterministic, slow and chargeable, which is how a suite stops being run.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         failOnWarning="true"
+         failOnNotice="true"
+         failOnDeprecation="true"
+         beStrictAboutOutputDuringTests="true">
+  <testsuites>
+    <testsuite name="unit">
+      <directory>tests/unit</directory>
+    </testsuite>
+  </testsuites>
+  <source>
+    <include>
+      <directory suffix=".php">includes</directory>
+    </include>
+  </source>
+</phpunit>

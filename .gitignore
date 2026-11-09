@@ -4,3 +4,5 @@ vendor/**/**
 
 # Log files
 *.log
+# PHPUnit result cache. Local state, not shared.
+.phpunit.cache/
