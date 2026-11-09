@@ -18,9 +18,7 @@ Read that file first. Everything below assumes it.
 
 Settled 2026-11-08 (AI-INTEGRATION G1).
 
-### Gap
-
-**A request that no component in the library can express.**
+**Gap** — A request that no component in the library can express.
 
 A gap is a first-class, structured result of the generation pipeline — not an error, and not an
 absence. *(Wording adopted deliberately per plan item L3, which found this definition already
@@ -32,7 +30,7 @@ stated tightly elsewhere and chose to reuse it rather than invent a looser one.)
 - **Reporting a gap is not authoring a component.** The pipeline names what it cannot build; it
   does not invent a block to cover it.
 
-### Projection
+**Projection**
 
 One artifact rendered for one audience. Same source, different shape — **not** a second source.
 
@@ -42,7 +40,7 @@ One artifact rendered for one audience. Same source, different shape — **not**
 A projection is distinct from a *copy*: a copy drifts from its source and catches nothing, which
 is why `docs/library/` propagated a documentation error unchanged.
 
-### Selection index
+**Selection index**
 
 The only artifact that is ever placed in a prompt.
 
@@ -53,13 +51,60 @@ The only artifact that is ever placed in a prompt.
 
 ---
 
+## Schema vocabulary
+
+Settled 2026-11-08 (AI-INTEGRATION PS1).
+
+**Component schema** — a JSON-Schema draft-07 document describing one component's configurable
+values. `type: object` at the root, `additionalProperties: false`, a `required[]` list. One per
+component: 42 design-system patterns and 48 blocks by the current manifests, 90 in total. None
+exists yet — no `.schema.json` is present anywhere in the stack today.
+
+**Storage shape** — the key shape a component's values take *as stored in post content*, which is
+what a component schema describes. Distinct from the **render shape**, the nested form a Twig
+template reads. The two differ wherever ACF clone with `prefix_name` is used, which is 31% of all
+field definitions: clone stores a flat prefixed key and returns it nested.
+
+The schema describes the **storage** shape, not the render shape. That is what makes
+`additionalProperties: false` usable — both the validator and the model are working on the stored
+side, and `FieldKeyMap::flatten_fields()` already emits exactly these flat prefixed names. The
+render shape stays the template's concern, and `FieldKeyMap` remains the single place the
+translation happens.
+
+**`x-tl-`** — the extension-keyword prefix for anything a data schema cannot express: display
+order, groupings, cross-property invariants, conditional guards, provenance. Verified against
+`jsonschema` 4.25.1 — draft-07 accepts both `x-tl-*` and a bare `tl-*` as schema keywords, and
+`additionalProperties: false` still rejects an invented *instance* property in both cases, so
+extensions in the schema document never weaken instance validation. `x-` is kept because it is
+the recognised signal for "extension, not a schema keyword"; a bare `tl-order` is
+indistinguishable from a misspelled real keyword without knowing this project.
+
+**Envelope** — the stable, versioned wrapper around per-component schema contents: `$schema`, a
+schema-format `version`, and the key names. Versioned **separately from the contents**, because
+the two have opposite requirements — a derived artifact changes shape whenever a source does, and
+a published API should not. Contents regenerate on every build; a breaking change to the envelope
+is a deliberate version bump. This is also the insulation point for the ACF dependency: a
+consumer reading the envelope never reads ACF directly, so the ACF-specific derivation stays
+swappable behind it.
+
+**Composition schema** — the schema for an ordered list of block instances making one page: the
+generation pipeline's output, validated before anything is written. Distinct from a component
+schema, and necessary because the layout invariants are **cross-component** and no per-component
+schema can state them — `column` only as a child of `row`, the eleven parent-restricted blocks,
+and containers not nesting.
+
+**Demo fixture** — the existing `<name>.json` beside each design-system pattern, holding a `demo`
+object of placeholder content for Storybook. **It is not a schema and does not become one.** 42 of
+them exist; they stay exactly as they are. `block.json` is likewise unrelated: it is WordPress
+block registration, present in all 41 framework block directories.
+
+---
+
 ## Design-fidelity vocabulary
 
 Settled 2026-11-08 (AI-INTEGRATION G1; shape adopted per FG3).
 
-### Provenance
-
-**Where a value came from, recorded alongside the value.**
+**Provenance** — Where a value came from, recorded alongside the value.
 
 Per component, the shape is `{file, node, node_mobile, status, deviations[]}` — adopted per plan
 item FG3, which takes the *discipline* rather than the implementation — where `status`
