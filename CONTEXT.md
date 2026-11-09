@@ -50,9 +50,6 @@ A layout registered by the Genesis Blocks plugin, read via `genesis_blocks_get_l
   `include_genesis_layouts`) and keys them as `layouts`, not `patterns`.
 - **Guarded by `function_exists()` because the plugin is not installed on every site** — it is
   absent from natural-rose, so this sense is empty there and populated elsewhere.
-- Project Frontdoor's glossary independently lists this as one of three unrelated "block pattern"
-  senses on the Updater install, which is corroboration that the ambiguity is real rather than
-  local to this document.
 
 ### 1e. Unsynced pattern
 The same inserter entry as 1b or 1c, inserted **detached** — its blocks are copied into the post
@@ -170,7 +167,8 @@ bare "page" in a schema field.
 
 **351 uses across the framework docs.** The most overloaded noun in the stack after "pattern",
 and the one most likely to be miscommunicated to a model, because the AI work introduces a new
-sense while five already exist.
+sense while six already exist: five webpack outputs, the icon subset manifest, and then the AI
+manifest — seven in total, plus the runtime union described below.
 
 Five are webpack output, and **they do not all land in the same place** — four are committed
 under `timberland-starter/src/manifests/`, one is build output under `dist/wp/`:
@@ -193,9 +191,10 @@ under `timberland-starter/src/manifests/`, one is build output under `dist/wp/`:
 | `timberland` (framework) | none — it is the source the others are derived from |
 
 They are merged at runtime through `timberland/pattern_loader/additional_manifests` and
-`timberland/bootstrap_loader/additional_manifests`. So "the pattern manifest" is itself
-ambiguous across tiers, and "the merged manifest" is a fifth thing again — the runtime union,
-which is what the Dev-tier MCP `get_pattern_manifest` returns.
+`timberland/bootstrap_loader/additional_manifests`. Two consequences: "the pattern manifest" is
+ambiguous *across tiers* as well as across kinds, and **the merged result is a further sense
+again** — a runtime union that exists in no file, and is what the Dev-tier MCP's
+`get_pattern_manifest` returns.
 
 Plus two that are not build output:
 
@@ -320,7 +319,8 @@ audience tiers above.
 **A request that no component in the library can express.**
 
 A gap is a first-class, structured result of the generation pipeline — not an error, and not an
-absence. Two properties follow from the definition and are part of it:
+absence. *(Wording adopted deliberately per plan item L3, which found this definition already
+stated tightly elsewhere and chose to reuse it rather than invent a looser one.)* Two properties follow from the definition and are part of it:
 
 - A gap is **reported, never silently approximated.** Picking the nearest available block and
   rendering it produces a page that validates as correct and is wrong, which reads as product
@@ -334,7 +334,8 @@ absence. Two properties follow from the definition and are part of it:
 
 **Where a value came from, recorded alongside the value.**
 
-Per component, the shape is `{file, node, node_mobile, status, deviations[]}`, where `status`
+Per component, the shape is `{file, node, node_mobile, status, deviations[]}` — adopted per plan
+item FG3, which takes the *discipline* rather than the implementation — where `status`
 distinguishes *Figma-backed* from everything else, and `deviations[]` carries anything a design
 specifies for which no design token exists.
 
@@ -384,45 +385,6 @@ surfaces defects. Three were found that way:
 The first figure is itself an example: the plan this glossary draws on recorded it as "12
 parameters / 24", transcribed rather than counted. Deriving it gave 10/23. The claim held; the
 numbers did not.
-
----
-
-## 10. Frontdoor vocabulary
-
-Terms belonging to Project Frontdoor (`Updater/project-frontdoor`), recorded so the two systems
-are never confused. Frontdoor targets the **same Updater install** this stack does, and its
-glossary (`CONTEXT.md`, 242 lines, grouped by vocabulary domain with a `Settled` date and ticket
-per group) is the shape G1 pointed at.
-
-Where a word appears in both systems with different meanings:
-
-- **Section** — Frontdoor's unit of the library: a complete self-contained horizontal band,
-  defined once in code with a declared schema. **Sections do not contain other sections.** This
-  stack has no equivalent unit; its nearest analogue is a design-system organism, which *can*
-  nest.
-- **Instance** — one placement of a section on one page, carrying its own values. "An instance is
-  content; a section is code" — the same distinction this glossary draws between a fixture and a
-  target (§2i).
-- **Composition** — the ordered, **flat** list of instances making up a page. A sequence, not a
-  tree. Block markup in this stack is a tree.
-- **Manifest** — in Frontdoor, *the declaration of one section*: its variants, and each value's
-  type, bounds, label and openness. **An eighth sense** on top of §2e's seven, and the one
-  closest to what AM2 is building.
-- **Variant** — in Frontdoor, one *enumerated display option* of a section, and variants are
-  **closed**: a section declares the variants it has. This stack's pattern variants (§2h) are
-  files, not an enumerated set, and nothing closes them.
-- **Provenance** — same concept as §5, stated more narrowly: whether a variant is backed by a
-  Figma node, *approved* when it is and *custom* when it is not. **"Provenance is a label, never
-  a gate"** — nothing refuses to render a custom variant.
-- **Gap** — identical to §4, and this glossary's wording is taken from Frontdoor's.
-- **Block** — Frontdoor's *legacy* vocabulary for this stack's §2 term, with a measurement worth
-  keeping: 73.6% of block instances on the Updater install are layout primitives (`column`, `row`,
-  `section`, `sidebar`) and only 9.4% are section-shaped.
-
-Frontdoor terms with no counterpart here, listed so they are not borrowed loosely: **Takeover**
-(theme-wide render substitution), **Shadow** (per-URL, replaced the earlier "Displacement" after
-"takeover" was found doing double duty), **Render isolation** (every class carries `.fd-`),
-**Export artifact**, **Drift**, **Refusal**, **Open / enumerated**.
 
 ---
 
