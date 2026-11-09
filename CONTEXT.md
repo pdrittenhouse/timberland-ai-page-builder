@@ -9,7 +9,7 @@ Where a figure appears, it is a count taken from the source.
 
 ---
 
-## 1. "Pattern" — three unrelated things
+## 1. "Pattern" — four unrelated things
 
 This is the term that has already cost one design error: an early draft of AM2 carried sense 1
 into the manifest, which would have spent scarce prompt budget on primitives the editor cannot
@@ -43,9 +43,17 @@ A `wp_block` post in the database.
   `get_posts(['post_type' => 'wp_block', ...])`.
 - Gated behind the `include_editor_patterns` setting.
 
+### 1d. Unsynced pattern
+The same inserter entry as 1b or 1c, inserted **detached** — its blocks are copied into the post
+and no longer track the source.
+
+- WordPress presents 1c and 1d in one UI, distinguished only by a "Synced" toggle.
+- The distinction matters to generation: an unsynced insertion produces ordinary block markup a
+  model can read and modify; a synced one produces a `wp:block {"ref":N}` reference it cannot.
+
 **Naming rule for this codebase:** write *design-system pattern*, *registered block pattern*,
-or *synced pattern*. Bare "pattern" is ambiguous and should not appear in a manifest key, a
-prompt, or a schema field name.
+*synced pattern*, or *unsynced pattern*. Bare "pattern" is ambiguous and should not appear in a
+manifest key, a prompt, or a schema field name.
 
 > The business plan's generation flow says the AI receives "available patterns (pre-composed
 > block groups)" — senses **1b and 1c**, not 1a.
@@ -62,6 +70,88 @@ made of.
   (`ManifestBuilder::collect_blocks()`), not by reading prose documentation.
 - A block may *consume* design-system patterns (1a) internally; that relationship is the
   dependency graph, not an equivalence.
+
+---
+
+## 2a. Atomic-design levels
+
+The six directories under `src/design-system/patterns/`. **Checked against the filesystem, because
+the names are not the conventional ones.**
+
+| level | conventional name | populated today |
+|---|---|---|
+| `00-protons` | "particles" in most atomic-design writing | yes |
+| `01-atoms` | atoms | yes |
+| `02-molecules` | molecules | yes |
+| `03-organisms` | organisms | yes |
+| `04-templates` | templates | **empty** |
+| `05-pages` | pages | **empty** |
+
+Two things follow:
+
+- **It is `protons`, not `particles`.** Nothing in this stack is called a particle. A prompt or
+  schema using that word matches nothing.
+- **`04-templates` and `05-pages` are empty.** They are structural placeholders. Any reference to
+  a "template" or "page" in this stack therefore means one of the senses in §2b or §2c, never an
+  atomic-design level — the collision is real but currently latent, which is the dangerous kind.
+
+A level is always written with its numeric prefix (`02-molecules`), because that is the form the
+manifest and the asset paths use.
+
+---
+
+## 2b. "Template" — four things
+
+- **Theme template** — a PHP file in the theme root selected by WordPress's template hierarchy.
+  **13 of the 20** PHP files there are hierarchy entries: `404.php`, `archive.php`, `author.php`,
+  `front-page.php`, `index.php`, `page.php`, the four `page-template-*.php`, `search.php`,
+  `single.php`, `woocommerce.php`. The other 7 are includes and helpers (`header.php`,
+  `footer.php`, `sidebar.php`, `searchform.php`, `functions.php`, `cpt.php`,
+  `_new-template.php`) and are never selected by the hierarchy.
+- **Twig template** — a `.twig` file under `src/templates/`. **139** of them. Rendered by Timber,
+  usually from a theme template above.
+- **Atomic-design template** — `04-templates`. Empty (§2a).
+- **WP block template** — an FSE `templates/*.html` file. **None exist** in this stack; it is not
+  a block theme.
+
+"Pattern template" is not a term in this codebase. If it appears, it means either a Twig template
+belonging to a design-system pattern (`_tabs.tpl.twig`) or a registered block pattern's `content`
+string, and should be written as one of those.
+
+**Naming rule:** always qualify — *theme template*, *Twig template*, *block template*.
+
+---
+
+## 2c. "Page" — three things
+
+- **WP page** — a `page` post-type record. Content.
+- **Theme page template** — `page-template-centered.php` and similar: a hierarchy entry an editor
+  selects per page. Code.
+- **Atomic-design page** — `05-pages`. Empty (§2a).
+
+Related content terms that are *not* interchangeable with any of the above:
+
+- **WP post** — a `post` post-type record. Also used loosely for "any post-type record", which is
+  how `get_posts(['post_type' => 'wp_block'])` returns synced patterns: those are posts too.
+- **Archive** — a *query result* rendered by `archive.php`, not a stored record. There is no
+  archive object to generate; a generated composition cannot be an archive.
+
+**Naming rule:** *WP page* / *WP post* for content, *page template* for the PHP file, and never
+bare "page" in a schema field.
+
+---
+
+## 2d. "Component" — three things
+
+- **Bootstrap component** — one of the **26** component stylesheets under
+  `dist/wp/css/bootstrap/`, loaded conditionally by `BootstrapLoader` (269 references to the term
+  there) and forced on for one fixture via `timberland/bootstrap_loader/all_components`. This is
+  the sense the visual gate's `componentCoverage` means.
+- **Design-system pattern** — §1a. Called a "component" in casual speech and in some docblocks.
+- **Twig component** — the file implementing one, e.g. `_tabs.tpl.twig`.
+
+**Naming rule:** *Bootstrap component* when it is one of the 26; otherwise use the §1a name.
+"Component" alone is the single most overloaded word in this stack after "pattern".
 
 ---
 
