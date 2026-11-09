@@ -1,0 +1,77 @@
+# PHPStan baseline.
+#
+# This is a RATCHET, not a suppression list: the way to improve this project's analysis is to
+# DELETE entries from here by fixing what they describe, never to raise `level` in
+# phpstan.neon.dist. Each deleted entry is a real fix; a level bump is a new wall.
+#
+# What is in here at the time it was created, and why — so the next person knows which are
+# fixable and which are not:
+#
+#   FieldKeyMap / acf_get_setting returns void
+#       A WRONG STUB, not wrong code. `acf_get_setting('load_json')` returns the registered
+#       ACF JSON path list and the plugin depends on that; php-stubs/acf-pro-stubs declares it
+#       `void`. Not fixable here without shipping a stub override.
+#
+#   OpenAIClient / promptTokens, RuntimeMerge / WP_Block_Type::$description and ::$title
+#       Defensive `??` against properties the stubs declare non-nullable. The `??` stays:
+#       WordPress can leave a dynamically registered block type's title and description unset,
+#       whatever the stub says, and removing the guard to satisfy an optimistic signature
+#       trades a real runtime guard for a clean report.
+#
+#   ManifestBuilder::read_built_manifest() is unused, and the RestController `??`/nullsafe
+#   findings
+#       REAL, and tracked to be fixed rather than kept. The unused method is the manifest-first
+#       block discovery its own docblock describes but that `get_block_directories()` never
+#       implements; the RestController findings are the symptom of an unguarded
+#       `LLMClientFactory::create()` outside the try. Both are addressed in the commits that
+#       follow this one, and these entries come out with them.
+
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Result of function acf_get_setting \(void\) is used\.$#'
+			identifier: function.void
+			count: 1
+			path: includes/FieldKeyMap.php
+
+		-
+			message: '#^Method TimberlandAIPageBuilder\\ManifestBuilder\:\:read_built_manifest\(\) is unused\.$#'
+			identifier: method.unused
+			count: 1
+			path: includes/ManifestBuilder.php
+
+		-
+			message: '#^Property OpenAI\\Responses\\Chat\\CreateResponseUsage\:\:\$promptTokens \(int\) on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.property
+			count: 1
+			path: includes/OpenAIClient.php
+
+		-
+			message: '#^Expression on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.expr
+			count: 2
+			path: includes/RestController.php
+
+		-
+			message: '#^Left side of && is always true\.$#'
+			identifier: booleanAnd.leftAlwaysTrue
+			count: 1
+			path: includes/RestController.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Throwable\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: includes/RestController.php
+
+		-
+			message: '#^Property WP_Block_Type\:\:\$description \(string\) on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.property
+			count: 1
+			path: includes/RuntimeMerge.php
+
+		-
+			message: '#^Property WP_Block_Type\:\:\$title \(string\) on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.property
+			count: 1
+			path: includes/RuntimeMerge.php

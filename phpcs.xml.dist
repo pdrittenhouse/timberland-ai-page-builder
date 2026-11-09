@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<ruleset name="TimberlandAIPageBuilder">
+	<description>
+		Deliberately a SMALL ruleset, not the full WordPress standard, and the same three
+		categories the framework uses (see timberland/phpcs.xml.dist). Formatting sniffs are
+		excluded on purpose: they bury the handful with real safety value, and this plugin's
+		formatting is already internally consistent.
+
+		The categories matter more here than in the framework. This codebase is the one with a
+		REST surface, an LLM client that fetches over the network, and a history table it writes
+		to — so unescaped output, unprepared SQL and unsanitised input are the live risks, not
+		theoretical ones.
+	</description>
+
+	<!--
+		Registered by hand rather than through dealerdirect/phpcodesniffer-composer-installer.
+		That package is a Composer plugin and this repo's allow-plugins policy denies it
+		explicitly (composer.json config.allow-plugins), matching the framework: the package
+		installs, its plugin code never runs, and the standards are wired up here instead.
+	-->
+	<config name="installed_paths" value="vendor/wp-coding-standards/wpcs,vendor/phpcsstandards/phpcsextra,vendor/phpcsstandards/phpcsutils"/>
+
+	<file>includes</file>
+	<file>timberland-ai-page-builder.php</file>
+	<file>uninstall.php</file>
+
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="ps"/>
+
+	<!--
+		Output escaping. The plugin returns assembled markup through the REST API and renders
+		admin screens, so this is the category that decides whether generated content can carry
+		script into a page.
+	-->
+	<rule ref="WordPress.Security"/>
+
+	<!--
+		The history table is queried directly with $wpdb. Every one of those call sites is worth
+		a second opinion, which is the point of keeping this on.
+	-->
+	<rule ref="WordPress.DB"/>
+
+	<!--
+		Mirrors the framework's third category. Mostly reports file_get_contents/json_encode in
+		build and CLI paths, which are usually appropriate here, but the sniff is what makes that
+		a judgement rather than an assumption.
+	-->
+	<rule ref="WordPress.WP.AlternativeFunctions"/>
+</ruleset>

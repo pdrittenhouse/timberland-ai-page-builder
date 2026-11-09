@@ -1,0 +1,41 @@
+# PHPStan configuration for the Timberland AI Page Builder.
+#
+# The analysed set deliberately MIRRORS phpunit.xml's <source>: `includes/`. If the two
+# disagree about what the project is, every later comparison between them is noise.
+#
+# `szepeviktor/phpstan-wordpress` is included by hand rather than through
+# `phpstan/extension-installer`, matching the framework: this repo's `allow-plugins` policy
+# denies the one Composer plugin it already had to decide about, and widening it to
+# auto-register an extension is a worse trade than one explicit include line.
+
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+    - phpstan-baseline.neon
+
+parameters:
+    # Level 5 for the same reason the framework chose it: that is where the null-handling and
+    # return-type findings live, and this plugin's risk is concentrated in exactly that shape —
+    # a REST controller reading request params, an LLM client parsing a response body, and a
+    # manifest store that can legitimately return nothing.
+    #
+    # Ratchet from here by DELETING baseline entries, not by raising the level. Each deleted
+    # entry is a real fix; each level bump is a new wall.
+    level: 5
+
+    paths:
+        - includes
+
+    # Third-party surfaces this plugin calls but does not ship. Without the ACF stubs every
+    # `get_field()` / `acf_get_setting()` call in FieldKeyMap reports as an unknown function.
+    # Stubs rather than a live install, so analysis runs against real signatures with no
+    # WordPress booted — the same arrangement the unit suite asserts.
+    # Constants defined by the plugin bootstrap, which is not in `paths`. See the file.
+    bootstrapFiles:
+        - phpstan-bootstrap.php
+
+    scanFiles:
+        - vendor/php-stubs/acf-pro-stubs/acf-pro-stubs.php
+
+    # This codebase is heavily docblocked. Trusting annotations over inference would suppress
+    # exactly the mismatches worth finding.
+    treatPhpDocTypesAsCertain: false
