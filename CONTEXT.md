@@ -9,7 +9,7 @@ Where a figure appears, it is a count taken from the source.
 
 ---
 
-## 1. "Pattern" — four unrelated things
+## 1. "Pattern" — five unrelated things
 
 This is the term that has already cost one design error: an early draft of AM2 carried sense 1
 into the manifest, which would have spent scarce prompt budget on primitives the editor cannot
@@ -43,7 +43,18 @@ A `wp_block` post in the database.
   `get_posts(['post_type' => 'wp_block', ...])`.
 - Gated behind the `include_editor_patterns` setting.
 
-### 1d. Unsynced pattern
+### 1d. Genesis layout
+A layout registered by the Genesis Blocks plugin, read via `genesis_blocks_get_layouts()`.
+
+- The prototype collects these separately (`ManifestBuilder::collect_genesis_layouts()`, gated on
+  `include_genesis_layouts`) and keys them as `layouts`, not `patterns`.
+- **Guarded by `function_exists()` because the plugin is not installed on every site** — it is
+  absent from natural-rose, so this sense is empty there and populated elsewhere.
+- Project Frontdoor's glossary independently lists this as one of three unrelated "block pattern"
+  senses on the Updater install, which is corroboration that the ambiguity is real rather than
+  local to this document.
+
+### 1e. Unsynced pattern
 The same inserter entry as 1b or 1c, inserted **detached** — its blocks are copied into the post
 and no longer track the source.
 
@@ -52,7 +63,7 @@ and no longer track the source.
   model can read and modify; a synced one produces a `wp:block {"ref":N}` reference it cannot.
 
 **Naming rule for this codebase:** write *design-system pattern*, *registered block pattern*,
-*synced pattern*, or *unsynced pattern*. Bare "pattern" is ambiguous and should not appear in a
+*Genesis layout*, *synced pattern*, or *unsynced pattern*. Bare "pattern" is ambiguous and should not appear in a
 manifest key, a prompt, or a schema field name.
 
 > The business plan's generation flow says the AI receives "available patterns (pre-composed
@@ -172,6 +183,20 @@ under `timberland-starter/src/manifests/`, one is build output under `dist/wp/`:
 | `vendor-manifest.json` | `VendorManifestPlugin` | `src/manifests/` | vendor assets |
 | `template-manifest.json` | `TemplateManifestPlugin` | **`dist/wp/`** | templates |
 
+**And each kind exists once per tier, not once overall.** Verified on natural-rose:
+
+| tier | manifests it ships |
+|---|---|
+| `timberland-extended` (plugin) | `pattern`, `block`, `bootstrap` |
+| `timberland-starter` (parent) | `pattern`, `block`, `bootstrap`, `vendor` |
+| `natural-rose` (child) | `block` |
+| `timberland` (framework) | none — it is the source the others are derived from |
+
+They are merged at runtime through `timberland/pattern_loader/additional_manifests` and
+`timberland/bootstrap_loader/additional_manifests`. So "the pattern manifest" is itself
+ambiguous across tiers, and "the merged manifest" is a fifth thing again — the runtime union,
+which is what the Dev-tier MCP `get_pattern_manifest` returns.
+
 Plus two that are not build output:
 
 - **Icon subset manifest** — `src/generated/icon-fonts/subset-manifest.json`, read by
@@ -247,6 +272,26 @@ differ — `UPDATE_BASELINES=1`, `--update-snapshots`, `UPDATE_GOLDEN=1`,
 A fixture is content. A target is a test declaration pointing at content. One can exist without
 the other, and both have — a fixture with no target is unguarded, and a target naming a
 non-existent fixture is silently ignored.
+
+---
+
+## 2j. Plugin tier contributions
+
+`timberland-extended` is the fourth architecture tier (framework → **plugin** → parent → child).
+It does not merely consume the framework's vocabulary; it extends several sets, which is why
+counts in this glossary are per-install rather than absolute:
+
+- Ships its own `pattern`, `block` and `bootstrap` manifests, merged via the
+  `additional_manifests` filters (§2e).
+- Registers Twig paths (`timberland/loader/plugin_paths`) and an asset base
+  (`timberland/pattern_loader/asset_bases`).
+- Contributes block directories, ACF JSON dirs, and metadata scan dirs — **14** distinct
+  `timberland/*` filters in `Plugin.php` altogether.
+
+One observable asymmetry, recorded as fact rather than as a complaint: the plugin's asset base
+declares `dir`, `url` and `handle_prefix` but **no `tier` key**, where the child theme's declares
+`'tier' => 'child'`. Base precedence is therefore explicit for the child and implicit for the
+plugin.
 
 ---
 
@@ -339,6 +384,45 @@ surfaces defects. Three were found that way:
 The first figure is itself an example: the plan this glossary draws on recorded it as "12
 parameters / 24", transcribed rather than counted. Deriving it gave 10/23. The claim held; the
 numbers did not.
+
+---
+
+## 10. Frontdoor vocabulary
+
+Terms belonging to Project Frontdoor (`Updater/project-frontdoor`), recorded so the two systems
+are never confused. Frontdoor targets the **same Updater install** this stack does, and its
+glossary (`CONTEXT.md`, 242 lines, grouped by vocabulary domain with a `Settled` date and ticket
+per group) is the shape G1 pointed at.
+
+Where a word appears in both systems with different meanings:
+
+- **Section** — Frontdoor's unit of the library: a complete self-contained horizontal band,
+  defined once in code with a declared schema. **Sections do not contain other sections.** This
+  stack has no equivalent unit; its nearest analogue is a design-system organism, which *can*
+  nest.
+- **Instance** — one placement of a section on one page, carrying its own values. "An instance is
+  content; a section is code" — the same distinction this glossary draws between a fixture and a
+  target (§2i).
+- **Composition** — the ordered, **flat** list of instances making up a page. A sequence, not a
+  tree. Block markup in this stack is a tree.
+- **Manifest** — in Frontdoor, *the declaration of one section*: its variants, and each value's
+  type, bounds, label and openness. **An eighth sense** on top of §2e's seven, and the one
+  closest to what AM2 is building.
+- **Variant** — in Frontdoor, one *enumerated display option* of a section, and variants are
+  **closed**: a section declares the variants it has. This stack's pattern variants (§2h) are
+  files, not an enumerated set, and nothing closes them.
+- **Provenance** — same concept as §5, stated more narrowly: whether a variant is backed by a
+  Figma node, *approved* when it is and *custom* when it is not. **"Provenance is a label, never
+  a gate"** — nothing refuses to render a custom variant.
+- **Gap** — identical to §4, and this glossary's wording is taken from Frontdoor's.
+- **Block** — Frontdoor's *legacy* vocabulary for this stack's §2 term, with a measurement worth
+  keeping: 73.6% of block instances on the Updater install are layout primitives (`column`, `row`,
+  `section`, `sidebar`) and only 9.4% are section-shaped.
+
+Frontdoor terms with no counterpart here, listed so they are not borrowed loosely: **Takeover**
+(theme-wide render substitution), **Shadow** (per-URL, replaced the earlier "Displacement" after
+"takeover" was found doing double duty), **Render isolation** (every class carries `.fd-`),
+**Export artifact**, **Drift**, **Refusal**, **Open / enumerated**.
 
 ---
 
