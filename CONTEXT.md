@@ -163,6 +163,59 @@ bare "page" in a schema field.
 
 ---
 
+## 2d-i. Layout vocabulary — `section`, `row`, `column`, `container`
+
+These follow **Bootstrap's** structure and mean what Bootstrap means by them. They are the
+general markup skeleton this stack composes pages from, so a request to "generate a section" is
+a request for a specific block with specific nesting rules, not a generic page region.
+
+The `section` block emits three nested layers, verified from `section.twig`:
+
+```html
+<section class="…">                     <!-- the band itself -->
+  <span class="overlay …">              <!-- optional -->
+  <div class="…">                       <!-- section wrapper -->
+    <div class="container|container-fluid…">   <!-- optional, see below -->
+      <InnerBlocks/>
+    </div>
+  </div>
+</section>
+```
+
+- **Section** — an `acf/section` block rendering a `<section>` element: one horizontal band. It
+  takes inner blocks. Unlike some systems' "section", **it nests** — a section can contain
+  another section.
+- **Row** — an `acf/row` block emitting Bootstrap's `.row`. A grid row.
+- **Column** — an `acf/column` block emitting `.col*`. **Restricted: `"parent": ["acf/row"]`** —
+  it cannot be placed anywhere else.
+- **Container** — Bootstrap's `.container` / `.container-fluid` width constraint. **Not a block.**
+  It is a *conditional wrapper inside* the section block, switched by the section's `container`
+  and `full_width` fields. You cannot place a container; you configure one on a section.
+
+Two invariants a generated composition has to respect:
+
+- **Column may only be a child of row.** Eleven blocks carry a `parent` restriction —
+  `accordion-item`→`accordion`, `button-text`→`button`, `column`→`row`, `group`→`button-group`,
+  `slide`→`slider`, `tab`→`tabs`, and the five table parts. Placing any of them elsewhere is
+  invalid markup the editor will reject.
+- **Containers do not nest.** The section template guards its container on
+  `block_context['acf/fields']['container'] != true`, so an already-contained ancestor suppresses
+  the inner one. A composition that containers at two levels produces one container, not two —
+  and a model reasoning from the field alone will predict the wrong markup.
+
+`sidebar` and `group` are layout blocks too.
+
+**Measured on natural-rose, because the proportion is not what an outside reference would
+suggest:** layout primitives (`column`, `row`, `section`, `sidebar`, `group`) are **7.9%** of
+block instances across the 55 fixture pages and **5.9%** across the 9 real content pages —
+143 of 1,867 instances overall. Not the majority. The most frequent blocks on this install are
+`posts-loop`, `hero-unit`, `video`, `table-cell` and `card`.
+
+This number is **per install** and does not transfer. Any plan reasoning about how much of a
+composition is layout should measure the install it targets.
+
+---
+
 ## 2e. "Manifest" — seven things, and this plan adds the seventh
 
 **351 uses across the framework docs.** The most overloaded noun in the stack after "pattern",
