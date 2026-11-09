@@ -155,6 +155,101 @@ bare "page" in a schema field.
 
 ---
 
+## 2e. "Manifest" — seven things, and this plan adds the seventh
+
+**351 uses across the framework docs.** The most overloaded noun in the stack after "pattern",
+and the one most likely to be miscommunicated to a model, because the AI work introduces a new
+sense while five already exist.
+
+Five are webpack output, and **they do not all land in the same place** — four are committed
+under `timberland-starter/src/manifests/`, one is build output under `dist/wp/`:
+
+| file | emitted by | written to | describes |
+|---|---|---|---|
+| `pattern-manifest.json` | `PatternManifestPlugin` | `src/manifests/` | the 42 design-system patterns |
+| `block-manifest.json` | `BlockManifestPlugin` | `src/manifests/` | the 48 blocks |
+| `bootstrap-manifest.json` | `BootstrapManifestPlugin` | `src/manifests/` | Bootstrap components |
+| `vendor-manifest.json` | `VendorManifestPlugin` | `src/manifests/` | vendor assets |
+| `template-manifest.json` | `TemplateManifestPlugin` | **`dist/wp/`** | templates |
+
+Plus two that are not build output:
+
+- **Icon subset manifest** — `src/generated/icon-fonts/subset-manifest.json`, read by
+  `icon-glyphs.spec.js`.
+- **AI manifest** — the artifact AM1–AM5 define and `ManifestBuilder` produces. **This is a new,
+  seventh thing.** It is assembled *from* several of the above; it is not one of them.
+
+**Naming rule:** never write "the manifest". Write *pattern manifest*, *block manifest*, *AI
+manifest*, and so on. In schema fields and prompts, prefer the filename.
+
+---
+
+## 2f. "Critical" — four things
+
+- **Critical half of a pattern split** — `PatternCriticalSplitPlugin` divides each pattern's CSS
+  into a *critical* (layout) half and a *content* (appearance) half. This is the sense in
+  `patterns-critical-*.css`.
+- **Paint-critical pattern** — a member of the `paint_critical_patterns` list: a pattern whose
+  layout must be inlined because it hides itself until JS runs. A narrower, explicit set.
+- **Inline critical budget** — `timberland/performance/inline_critical_budget`, the byte ceiling
+  on what gets inlined rather than linked.
+- **Bootstrap critical bundle** — `dist/wp/css/bootstrap/critical.css`, an unrelated split of
+  Bootstrap's own CSS.
+
+The first two are routinely confused, and the confusion is consequential: being in the critical
+*group* only inlines a pattern's layout, so a self-hiding rule must also classify as layout or
+the protection is void.
+
+**Naming rule:** *critical half*, *paint-critical*, *inline budget*, *Bootstrap critical*.
+
+---
+
+## 2g. "Baseline" — five things
+
+Five committed-expectation stores, with different portability and different update commands.
+
+| baseline | count today | portable between machines? |
+|---|---|---|
+| computed-style (`__baselines__/*.json`) | 84 | yes — values |
+| PNG screenshots (`__baselines__/screenshots/`) | 6 | **no** — encodes font rasterisation |
+| PHPStan (`phpstan-baseline.neon`) | 171 entries | yes |
+| PHPCS (`phpcs-baseline.json`) | 132 groups | yes |
+| golden render (`tests/golden/__snapshots__/`) | 36 | yes |
+
+A sixth exists per enrolled target: the T5 interactive-state baseline
+(`<target>.<viewport>.states.json`).
+
+**Naming rule:** qualify every one. "Re-record the baseline" is ambiguous and the commands
+differ — `UPDATE_BASELINES=1`, `--update-snapshots`, `UPDATE_GOLDEN=1`,
+`analyse:baseline`, `sniff:baseline` are five different things.
+
+---
+
+## 2h. "Variant" — three things
+
+- **Pattern variant** — `_name~variant.tpl.twig`. **17** such files; a named alternative rendering
+  of one design-system pattern.
+- **Breakpoint variant** — a per-breakpoint CSS bundle from `BreakpointVariantsPlugin`
+  (`styles-bp-lg.css` and siblings).
+- **Fixture variant** — F2's one-factor-at-a-time sweep, which renders a block once per value of
+  a class-composing field.
+
+---
+
+## 2i. "Fixture" and "target"
+
+- **Fixture** — a page `Fixtures.php` seeds, slug-prefixed `tl-fixture-`. Content that exists so
+  the gate has something deterministic to measure. Not a PHPUnit fixture; the PHP suites use none.
+- **Target** — an entry in a theme's `visual.config.js` `targets[]`: a URL plus the per-target
+  options (`maxBytes`, `canary`, `png`, `a11y`, `states`, `viewports`). Most targets are
+  fixtures; the `site-*` ones are real pages and are the exception.
+
+A fixture is content. A target is a test declaration pointing at content. One can exist without
+the other, and both have — a fixture with no target is unguarded, and a target naming a
+non-existent fixture is silently ignored.
+
+---
+
 ## 3. The three tiers
 
 From the plugin plan. These describe **audiences**, and each has a different trust boundary and
