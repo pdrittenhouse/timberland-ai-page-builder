@@ -102,24 +102,39 @@ class FieldKeyMap
     }
 
     /**
-     * Load "Block: " and "Module: " field group JSON files from parent and child themes.
+     * Load "Block: " and "Module: " field group JSON, from the paths ACF itself is told about.
+     *
+     * AM1 -- this previously globbed `get_template_directory() . '/src/fields/group_*.json'`,
+     * which was wrong twice over and therefore loaded NOTHING:
+     *
+     *   - no tier has a `src/fields` directory at all; the ACF JSON lives in `src/acf-json`
+     *   - the files are not named `group_*.json`; they are `block-card.json`,
+     *     `module-button.json` and so on
+     *
+     * So every field key map was empty, silently, and a writer had no `field_xxx` key to put in
+     * a block's `data`.
+     *
+     * The fix is deliberately NOT a corrected directory list. Re-deriving tier resolution here
+     * would be a second implementation of something this stack has already got wrong twice, and
+     * it would drift from the real one. The framework registers every tier's path with ACF via
+     * `acf/settings/load_json` (Timberland\Framework\Fields::acf_json_load_point), so asking
+     * ACF is asking the authority. Measured on a four-tier install: 5 paths, 106 files --
+     * framework 88, timberland-extended 17, child theme 1.
      */
     private function load_relevant_groups(): void
     {
-        $dirs = [];
-
-        $parent_dir = get_template_directory() . '/src/fields';
-        if (is_dir($parent_dir)) {
-            $dirs[] = $parent_dir;
-        }
-
-        $child_dir = get_stylesheet_directory() . '/src/fields';
-        if ($child_dir !== $parent_dir && is_dir($child_dir)) {
-            $dirs[] = $child_dir;
-        }
+        // `acf_get_setting()` exists whenever ACF is active, which is this plugin's hard
+        // dependency. The fallback is for the ACF-absent case only, where it finds nothing and
+        // the map is empty -- which is the correct answer, not a failure.
+        $dirs = function_exists('acf_get_setting')
+            ? (array) acf_get_setting('load_json')
+            : [get_template_directory() . '/src/acf-json'];
 
         foreach ($dirs as $dir) {
-            $files = glob($dir . '/group_*.json');
+            if (!is_dir($dir)) {
+                continue;
+            }
+            $files = glob($dir . '/*.json');
             if (!$files) {
                 continue;
             }

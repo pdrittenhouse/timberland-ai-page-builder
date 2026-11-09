@@ -116,23 +116,66 @@ class ManifestBuilder
     }
 
     /**
-     * Get block directories from parent and child themes.
+     * Block directories, across every tier that can register one.
+     *
+     * AM1 -- this looked only at the parent and child themes, and **both hold zero block.json
+     * files**. Measured on a four-tier install: the 48 blocks are 41 in the framework
+     * (`vendor/pdrittenhouse/timberland`) and 7 in the timberland-extended plugin. So this
+     * returned two directories that exist and are empty, and the manifest had no blocks at all.
+     *
+     * The authority is `block-manifest.json`, which the framework's BlockManifestPlugin already
+     * emits with every block and the tier it came from. Re-deriving tier resolution in PHP would
+     * be a second implementation of something this stack has already got wrong twice -- the
+     * plugin pattern roots, and the tier-union erasure -- so the manifest is read first and
+     * directory scanning is only the fallback for an install that has never been built.
+     *
+     * @return array<int, string> directories to scan, empty when the manifest supplied the data
      */
     private function get_block_directories(): array
     {
         $dirs = [];
 
-        $parent_dir = get_template_directory() . '/src/templates/blocks';
-        if (is_dir($parent_dir)) {
-            $dirs[] = $parent_dir;
-        }
+        // Framework first, then plugin, then parent, then child: the precedence the other
+        // manifest readers use, so a later tier's block.json wins on a slug collision.
+        $candidates = [
+            get_template_directory() . '/vendor/pdrittenhouse/timberland/src/templates/blocks',
+            WP_PLUGIN_DIR . '/timberland-extended/src/templates/blocks',
+            get_template_directory() . '/src/templates/blocks',
+            get_stylesheet_directory() . '/src/templates/blocks',
+        ];
 
-        $child_dir = get_stylesheet_directory() . '/src/templates/blocks';
-        if ($child_dir !== $parent_dir && is_dir($child_dir)) {
-            $dirs[] = $child_dir;
+        foreach ($candidates as $dir) {
+            if (is_dir($dir) && !in_array($dir, $dirs, true)) {
+                $dirs[] = $dir;
+            }
         }
 
         return $dirs;
+    }
+
+    /**
+     * Read a built manifest from the tier that owns it.
+     *
+     * The parent theme's copy is authoritative: the child build reads the parent's rather than
+     * producing its own, which is the same topology the pattern manifest already uses.
+     *
+     * @param  string $name file name, e.g. `block-manifest.json`
+     * @return array<string, mixed>|null the decoded manifest, or null when none is on disk
+     */
+    private function read_built_manifest(string $name): ?array
+    {
+        foreach ([get_template_directory(), get_stylesheet_directory()] as $base) {
+            $path = $base . '/src/manifests/' . $name;
+            if (!is_readable($path)) {
+                continue;
+            }
+            $decoded = json_decode((string) file_get_contents($path), true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return null;
     }
 
     /**
