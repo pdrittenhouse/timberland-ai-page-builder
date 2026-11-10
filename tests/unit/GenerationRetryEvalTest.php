@@ -140,6 +140,96 @@ final class GenerationRetryEvalTest extends TestCase {
         $this->assertSame( 1, $limiter->recorded );
     }
 
+    public function test_repeater_row_values_get_their_companion_keys(): void {
+        // The failure this closes was invisible: validation reported "no companion and is not in
+        // the field key map" as a WARNING, so a generation looked successful while producing
+        // repeater rows ACF cannot resolve -- column widths that silently do not apply.
+        //
+        // Verified against a real editor-saved acf/column on natural-rose, which carries
+        // `col_width_0_width = '10'` alongside `_col_width_0_width = 'field_62394838a64ef'`.
+        // The key map holds the sub-field WITHOUT the row index, so stripping it is the fix.
+        $manifest = $this->manifest();
+        $manifest['blocks']['acf/column'] = array(
+            'name' => 'acf/column',
+            'title' => 'Column',
+            'description' => 'A column.',
+            'category' => 'timberland',
+            'keywords' => array( 'column' ),
+            'is_container' => true,
+            'parent' => null,
+            'provides_context' => false,
+            'uses_context' => false,
+            'supports' => array(),
+            'field_key_map' => array(
+                'col_width'       => 'field_repeater',
+                'col_width_width' => 'field_subwidth',
+            ),
+            'field_type_map' => array(
+                'col_width'       => 'repeater',
+                'col_width_width' => 'select',
+            ),
+            'field_count' => 2,
+            'usage_notes' => '',
+        );
+
+        $markup = '<!-- wp:acf/column ' . json_encode(
+            array(
+                'name' => 'acf/column',
+                'data' => array( 'col_width' => 1, 'col_width_0_width' => '10' ),
+                'mode' => 'preview',
+            )
+        ) . ' /-->';
+
+        $client = new FakeLLMClient( array( $markup ) );
+
+        $result = new MarkupGenerator(
+            new FakeManifestStore( $manifest ),
+            new FakeRateLimiter(),
+            static fn( ?string $model ) => $client
+        );
+
+        $out = $result->generate( 'two columns' );
+
+        $this->assertStringContainsString(
+            '"_col_width_0_width":"field_subwidth"',
+            str_replace( ' ', '', $out['markup'] ),
+            'The repeater row value has no companion key, so ACF will not resolve it.'
+        );
+    }
+
+    public function test_a_field_name_containing_an_index_is_not_mistaken_for_a_repeater_row(): void {
+        // The guard on the fix. `_0_` in a name does not make its parent a repeater, so the
+        // rewrite is gated on the parent's actual ACF type.
+        $manifest = $this->manifest();
+        $manifest['blocks']['acf/card']['field_key_map']['card_0_thing'] = 'field_literal';
+        $manifest['blocks']['acf/card']['field_type_map']['card_0_thing'] = 'text';
+
+        // Scripted twice: `card_0_thing` is not in the fixture SCHEMA, so validation rejects it
+        // and the retry fires. That is correct behaviour and beside this test's point -- what is
+        // being asserted is how the companion key was derived, which happens either way.
+        $client = new FakeLLMClient(
+            array(
+                $this->block( array( 'card_0_thing' => 'x' ) ),
+                $this->block( array( 'card_0_thing' => 'x' ) ),
+            )
+        );
+
+        // Built with the MODIFIED manifest -- `generator()` would rebuild its own and discard it.
+        $generator = new MarkupGenerator(
+            new FakeManifestStore( $manifest ),
+            new FakeRateLimiter(),
+            static fn( ?string $model ) => $client
+        );
+
+        $out = $generator->generate( 'a card' );
+
+        // Its own companion, from the map -- not one invented by splitting the name.
+        $this->assertStringContainsString(
+            '"_card_0_thing":"field_literal"',
+            str_replace( ' ', '', $out['markup'] )
+        );
+    }
+
     public function test_the_model_is_never_sent_acf_field_keys(): void {
         // Asserted here as well as in the budget suite, because this is the path that actually
         // reaches an API: 97% of the per-block cost, discarded on arrival.

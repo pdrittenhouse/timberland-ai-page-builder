@@ -431,6 +431,48 @@ class MarkupGenerator
                     }
                 }
 
+                // --- Step 3b: companions for REPEATER ROW values ---
+                //
+                // A repeater stores each row as `{field}_{index}_{subfield}`, and ACF writes a
+                // companion for every one of them -- verified against a real editor-saved
+                // `acf/column` on this install:
+                //
+                //     col_width_0_width   = '10'
+                //     _col_width_0_width  = 'field_62394838a64ef'
+                //
+                // The key map holds sub-fields WITHOUT the row index (`col_width_width`), so
+                // step 3 above never matched them and their companions were simply absent. The
+                // validator reported that as a warning, so a generation looked successful while
+                // producing rows ACF cannot resolve -- column widths that silently do not apply.
+                //
+                // Stripping the index is the whole fix: `col_width_0_width` -> look up
+                // `col_width_width`.
+                foreach (array_keys($data) as $data_key) {
+                    if (str_starts_with((string) $data_key, '_')) {
+                        continue;
+                    }
+
+                    if (!preg_match('/^(.+?)_(\d+)_(.+)$/', (string) $data_key, $parts)) {
+                        continue;
+                    }
+
+                    [, $parent, , $sub] = $parts;
+
+                    // Only for a parent that really is a repeater, so a field whose own name
+                    // happens to contain `_0_` is not rewritten.
+                    $parent_type = $type_map[$parent] ?? '';
+
+                    if ($parent_type !== 'repeater' && $parent_type !== 'flexible_content') {
+                        continue;
+                    }
+
+                    $sub_key = $key_map[$parent . '_' . $sub] ?? null;
+
+                    if ($sub_key !== null) {
+                        $data['_' . $data_key] = $sub_key;
+                    }
+                }
+
                 $new_json = wp_json_encode($block_data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
                 return "<!-- wp:acf/{$matches[1]} {$new_json} {$self_closing}-->";
             },
