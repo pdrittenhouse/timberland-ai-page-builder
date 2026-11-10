@@ -220,6 +220,17 @@ class Plugin
         }
 
         if ($submitted === '') {
+            // MIGRATION. An untouched field preserves the stored key -- but if that key predates
+            // encryption it must be encrypted NOW, not handed back verbatim.
+            //
+            // The first version returned `$existing` unchanged, so saving settings never migrated
+            // anything and a plaintext key stayed plaintext for ever while the commit message
+            // claimed otherwise. Found because the Figma token encrypted on save and the two LLM
+            // keys did not, on an install whose salts are demonstrably fine.
+            if ($existing !== '' && !SecretStore::is_encrypted($existing)) {
+                return SecretStore::encrypt($existing) ?? $existing;
+            }
+
             return $existing;
         }
 

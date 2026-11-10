@@ -112,9 +112,30 @@ class ApiKeyEncryptionTest extends TestCase
         $this->assertSame($key, Plugin::get_settings()['api_key'], 'the plaintext leftover must still work');
 
         // The next save -- of anything -- migrates it without a manual step.
-        $this->save(['model' => 'claude-opus-4-6']);
+        $saved = $this->save(['model' => 'claude-opus-4-6']);
 
+        // The ASSERTION THAT WAS MISSING. The original version checked only that the key was
+        // still readable after a save -- which passes whether or not anything was encrypted,
+        // because `reveal()` returns an unmarked value verbatim. So it passed while
+        // `store_api_key()` handed the plaintext straight back and migration never happened on
+        // any install. Caught in production, not here: the Figma token encrypted on save and the
+        // two LLM keys did not.
+        $this->assertTrue(
+            SecretStore::is_encrypted($saved['api_key']),
+            'a blank submit must ENCRYPT a plaintext leftover, not preserve it'
+        );
         $this->assertSame($key, Plugin::get_settings()['api_key'], 'still readable after migration');
+    }
+
+    public function test_migration_does_not_double_encrypt_on_a_later_save(): void
+    {
+        $key = 'sk-ant-api03-averylongexamplekeyvalue';
+        $this->options['taipb_settings'] = ['api_key' => $key];
+
+        $this->save(['model' => 'claude-opus-4-6']);
+        $this->save(['model' => 'claude-sonnet-4-5-20250929']);
+
+        $this->assertSame($key, Plugin::get_settings()['api_key'], 'a second save must not re-encrypt the ciphertext');
     }
 
     public function test_a_resubmitted_ciphertext_does_not_double_encrypt(): void

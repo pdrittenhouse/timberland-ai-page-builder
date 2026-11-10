@@ -42,8 +42,23 @@ $stats = $manifest_store->get_stats();
                                 <p class="description">
                                     <strong>A key is saved.</strong>
                                     <?php if (!$st['encrypted']): ?>
-                                        <span style="color:#b32d2e;">Stored UNENCRYPTED &mdash; this site has no usable
-                                        WordPress salts. Re-save after generating salts in <code>wp-config.php</code>.</span>
+                                        <?php
+                                        /*
+                                         * `encrypted: false` has TWO causes and the first version
+                                         * asserted the alarming one without checking: it told
+                                         * every operator their salts were unusable, including on
+                                         * installs where encryption demonstrably worked. Say which
+                                         * one it actually is.
+                                         */
+                                        ?>
+                                        <?php if (\TimberlandAIPageBuilder\SecretStore::is_available()): ?>
+                                            <span style="color:#996800;">Not yet encrypted &mdash; saved before
+                                            encryption was added. Saving this page once will encrypt it.</span>
+                                        <?php else: ?>
+                                            <span style="color:#b32d2e;">Cannot be encrypted &mdash; this site has no
+                                            usable WordPress salts. Generate them in <code>wp-config.php</code>, then
+                                            re-save.</span>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </p>
                             <?php endif; ?>
@@ -74,8 +89,23 @@ $stats = $manifest_store->get_stats();
                                 <p class="description">
                                     <strong>A key is saved.</strong>
                                     <?php if (!$st['encrypted']): ?>
-                                        <span style="color:#b32d2e;">Stored UNENCRYPTED &mdash; this site has no usable
-                                        WordPress salts. Re-save after generating salts in <code>wp-config.php</code>.</span>
+                                        <?php
+                                        /*
+                                         * `encrypted: false` has TWO causes and the first version
+                                         * asserted the alarming one without checking: it told
+                                         * every operator their salts were unusable, including on
+                                         * installs where encryption demonstrably worked. Say which
+                                         * one it actually is.
+                                         */
+                                        ?>
+                                        <?php if (\TimberlandAIPageBuilder\SecretStore::is_available()): ?>
+                                            <span style="color:#996800;">Not yet encrypted &mdash; saved before
+                                            encryption was added. Saving this page once will encrypt it.</span>
+                                        <?php else: ?>
+                                            <span style="color:#b32d2e;">Cannot be encrypted &mdash; this site has no
+                                            usable WordPress salts. Generate them in <code>wp-config.php</code>, then
+                                            re-save.</span>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </p>
                             <?php endif; ?>
