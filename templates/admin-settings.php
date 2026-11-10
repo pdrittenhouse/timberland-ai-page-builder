@@ -5,8 +5,14 @@ if (!defined('ABSPATH')) {
 }
 
 $settings = TimberlandAIPageBuilder\Plugin::get_settings();
-$has_api_key = defined('TAIPB_API_KEY') || !empty($settings['api_key']);
-$has_openai_key = defined('TAIPB_OPENAI_API_KEY') || !empty($settings['openai_api_key'] ?? '');
+
+// Configured-or-not, WITHOUT the credential. `get_settings()` decrypts, so the keys would
+// otherwise sit in this template's scope for the whole render -- one stray `print_r($settings)`
+// in a debug session away from the page that renders them. They are not needed here at all.
+$credential_status = TimberlandAIPageBuilder\Plugin::credential_status();
+$has_api_key = $credential_status['api_key']['configured'];
+$has_openai_key = $credential_status['openai_api_key']['configured'];
+unset($settings['api_key'], $settings['openai_api_key']);
 $manifest_store = TimberlandAIPageBuilder\Plugin::get_manifest_store();
 $stats = $manifest_store->get_stats();
 ?>
@@ -30,12 +36,29 @@ $stats = $manifest_store->get_stats();
                         <?php if (defined('TAIPB_API_KEY')): ?>
                             <p class="description">API key is defined in <code>wp-config.php</code> via <code>TAIPB_API_KEY</code> constant.</p>
                         <?php else: ?>
+                            <?php $st = $credential_status['api_key']; ?>
+                            <?php if ($st['configured']): ?>
+                                <p class="description">
+                                    <strong>A key is saved.</strong>
+                                    <?php if (!$st['encrypted']): ?>
+                                        <span style="color:#b32d2e;">Stored UNENCRYPTED &mdash; this site has no usable
+                                        WordPress salts. Re-save after generating salts in <code>wp-config.php</code>.</span>
+                                    <?php endif; ?>
+                                </p>
+                            <?php endif; ?>
                             <input type="password"
                                    name="taipb_settings[api_key]"
-                                   value="<?php echo esc_attr($settings['api_key']); ?>"
+                                   value=""
                                    class="regular-text"
-                                   autocomplete="off" />
-                            <p class="description">Your Anthropic API key. Alternatively, define <code>TAIPB_API_KEY</code> in <code>wp-config.php</code>.</p>
+                                   autocomplete="off"
+                                   placeholder="<?php echo $st['configured'] ? esc_attr__('Leave blank to keep the saved key', 'taipb') : ''; ?>" />
+                            <p class="description">Your Anthropic API key. Alternatively, define <code>TAIPB_API_KEY</code> in <code>wp-config.php</code>.
+                                <?php if ($st['configured']): ?>
+                                    Leave blank to keep the saved key, or type
+                                    <code><?php echo esc_html(\TimberlandAIPageBuilder\Plugin::CLEAR_SENTINEL); ?></code>
+                                    to remove it.
+                                <?php endif; ?>
+                            </p>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -45,12 +68,29 @@ $stats = $manifest_store->get_stats();
                         <?php if (defined('TAIPB_OPENAI_API_KEY')): ?>
                             <p class="description">API key is defined in <code>wp-config.php</code> via <code>TAIPB_OPENAI_API_KEY</code> constant.</p>
                         <?php else: ?>
+                            <?php $st = $credential_status['openai_api_key']; ?>
+                            <?php if ($st['configured']): ?>
+                                <p class="description">
+                                    <strong>A key is saved.</strong>
+                                    <?php if (!$st['encrypted']): ?>
+                                        <span style="color:#b32d2e;">Stored UNENCRYPTED &mdash; this site has no usable
+                                        WordPress salts. Re-save after generating salts in <code>wp-config.php</code>.</span>
+                                    <?php endif; ?>
+                                </p>
+                            <?php endif; ?>
                             <input type="password"
                                    name="taipb_settings[openai_api_key]"
-                                   value="<?php echo esc_attr($settings['openai_api_key'] ?? ''); ?>"
+                                   value=""
                                    class="regular-text"
-                                   autocomplete="off" />
-                            <p class="description">Your OpenAI API key (optional). Alternatively, define <code>TAIPB_OPENAI_API_KEY</code> in <code>wp-config.php</code>.</p>
+                                   autocomplete="off"
+                                   placeholder="<?php echo $st['configured'] ? esc_attr__('Leave blank to keep the saved key', 'taipb') : ''; ?>" />
+                            <p class="description">Your OpenAI API key (optional). Alternatively, define <code>TAIPB_OPENAI_API_KEY</code> in <code>wp-config.php</code>.
+                                <?php if ($st['configured']): ?>
+                                    Leave blank to keep the saved key, or type
+                                    <code><?php echo esc_html(\TimberlandAIPageBuilder\Plugin::CLEAR_SENTINEL); ?></code>
+                                    to remove it.
+                                <?php endif; ?>
+                            </p>
                         <?php endif; ?>
                     </td>
                 </tr>

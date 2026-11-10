@@ -73,7 +73,7 @@ class Plugin
     {
         register_setting('taipb_settings_group', 'taipb_settings', [
             'type' => 'array',
-            'sanitize_callback' => [$this, 'sanitize_settings'],
+            'sanitize_callback' => [self::class, 'sanitize_settings'],
             'default' => self::get_default_settings(),
         ]);
     }
@@ -134,13 +134,24 @@ class Plugin
         }
     }
 
-    public function sanitize_settings(array $input): array
+    /**
+     * Static because it uses no instance state, and because that is what makes it testable: the
+     * only other way in is `instance()`, which runs `init_hooks()` and therefore needs WordPress
+     * loaded -- which the unit suite asserts is NOT the case.
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    public static function sanitize_settings(array $input): array
     {
         $defaults = self::get_default_settings();
         $sanitized = [];
 
-        $sanitized['api_key'] = sanitize_text_field($input['api_key'] ?? $defaults['api_key']);
-        $sanitized['openai_api_key'] = sanitize_text_field($input['openai_api_key'] ?? $defaults['openai_api_key']);
+        // Credentials are encrypted at rest and never rendered back into the form, so the two
+        // key fields need handling that the other settings do not -- see store_api_key().
+        $stored = get_option('taipb_settings', []);
+        $sanitized['api_key'] = self::store_api_key($input, $stored, 'api_key');
+        $sanitized['openai_api_key'] = self::store_api_key($input, $stored, 'openai_api_key');
         $sanitized['model'] = sanitize_text_field($input['model'] ?? $defaults['model']);
         $sanitized['max_tokens'] = absint($input['max_tokens'] ?? $defaults['max_tokens']);
         $sanitized['rate_limit_per_hour'] = absint($input['rate_limit_per_hour'] ?? $defaults['rate_limit_per_hour']);
@@ -151,6 +162,49 @@ class Plugin
         $sanitized['custom_system_prompt'] = wp_kses_post($input['custom_system_prompt'] ?? $defaults['custom_system_prompt']);
 
         return $sanitized;
+    }
+
+    /**
+     * Resolve one API-key field on save.
+     *
+     * Three cases, and getting the middle one wrong is the classic WordPress settings bug:
+     *
+     *  - **field absent or empty** -- the key is unchanged. The form no longer renders the
+     *    existing value (it was going out in the HTML of every settings page), so an untouched
+     *    field submits nothing. Treating that as "clear the key" would wipe a working credential
+     *    every time an operator changed the model dropdown.
+     *  - **field is the clear sentinel** -- the key is deliberately removed. Without an explicit
+     *    way to clear, the first rule makes a key permanent.
+     *  - **anything else** -- a new key, stored encrypted.
+     *
+     * @param array<string, mixed> $input
+     * @param array<string, mixed>|mixed $stored
+     */
+    private static function store_api_key(array $input, $stored, string $field): string
+    {
+        $existing = is_array($stored) ? (string) ($stored[$field] ?? '') : '';
+        $submitted = isset($input[$field]) ? trim(sanitize_text_field((string) $input[$field])) : '';
+
+        if ($submitted === self::CLEAR_SENTINEL) {
+            return '';
+        }
+
+        if ($submitted === '') {
+            return $existing;
+        }
+
+        // A re-submitted ciphertext means the form posted back what it was given. It should not
+        // be possible now, but double-encrypting would silently destroy the key.
+        if (SecretStore::is_encrypted($submitted)) {
+            return $existing;
+        }
+
+        $encrypted = SecretStore::encrypt($submitted);
+
+        // No silent downgrade: storing the raw key while the UI says "encrypted" would be the
+        // worst outcome. Kept in plaintext ONLY when this install cannot encrypt at all, and
+        // settings_status() reports that so it is visible rather than assumed.
+        return $encrypted ?? $submitted;
     }
 
     public static function get_default_settings(): array
@@ -166,13 +220,65 @@ class Plugin
             'include_genesis_layouts' => true,
             'include_editor_patterns' => true,
             'custom_system_prompt' => '',
+            // 0 means "use PromptBudget::DEFAULT_CEILING". Raise it when a page legitimately
+            // needs more component context than the cost model's 8,000-token target; the budget
+            // degrades what the model is shown, it never refuses to generate.
+            'token_budget' => 0,
+            // 'tools' lets the model fetch field detail for the blocks it chooses; 'inline'
+            // is the previous behaviour, which guesses by keyword and inlines every field.
+            // A toggle rather than a constant because the OpenAI tool path is not yet verified
+            // against a live account -- falling back must not need a code change.
+            'context_mode' => 'tools',
         ];
     }
+
+    /** Typed into a key field to remove a stored credential. */
+    public const CLEAR_SENTINEL = 'remove';
 
     public static function get_settings(): array
     {
         $settings = get_option('taipb_settings', []);
-        return wp_parse_args($settings, self::get_default_settings());
+        $settings = wp_parse_args($settings, self::get_default_settings());
+
+        // Decrypted on read so every existing caller -- ClaudeClient, OpenAIClient, the REST
+        // controller's `!empty()` checks -- keeps working unchanged. `reveal()` passes an
+        // unmarked value straight through, so an install that predates encryption keeps running
+        // and is re-encrypted the next time settings are saved.
+        foreach (['api_key', 'openai_api_key'] as $field) {
+            $settings[$field] = SecretStore::reveal((string) ($settings[$field] ?? ''));
+        }
+
+        return $settings;
+    }
+
+    /**
+     * Whether each credential is configured, WITHOUT returning it.
+     *
+     * What a settings screen calls. Rendering a key into a form field put it in the HTML of every
+     * settings page response -- browser cache, the back button, and any screenshot of the screen.
+     *
+     * @return array<string, array{configured: bool, source: string, encrypted: bool}>
+     */
+    public static function credential_status(): array
+    {
+        $raw = get_option('taipb_settings', []);
+        $raw = is_array($raw) ? $raw : [];
+
+        $status = [];
+
+        foreach (['api_key' => 'TAIPB_API_KEY', 'openai_api_key' => 'TAIPB_OPENAI_API_KEY'] as $field => $constant) {
+            $stored = (string) ($raw[$field] ?? '');
+
+            $status[$field] = [
+                'configured' => defined($constant) || $stored !== '',
+                'source' => defined($constant) ? 'constant' : 'option',
+                // Reported, not assumed: an install with unusable salts stores plaintext, and an
+                // operator is entitled to know which of the two they have.
+                'encrypted' => $stored !== '' && SecretStore::is_encrypted($stored),
+            ];
+        }
+
+        return $status;
     }
 
     /**
