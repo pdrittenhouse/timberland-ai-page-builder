@@ -72,9 +72,12 @@ class OpenAIClient implements LLMClientInterface
                 'stop_reason' => $stop_reason,
             ];
         } catch (\OpenAI\Exceptions\ErrorException $e) {
-            throw new \RuntimeException('OpenAI API error: ' . $e->getMessage());
+            // Redacted because this is the exact path that printed an API key in clear text:
+            // a 404 body echoed back the value sent as the model name, and the message was
+            // raised verbatim. Provider error text is untrusted output, not a diagnostic.
+            throw new \RuntimeException('OpenAI API error: ' . Redact::credentials($e->getMessage()));
         } catch (\OpenAI\Exceptions\TransporterException $e) {
-            throw new \RuntimeException('OpenAI connection error: ' . $e->getMessage());
+            throw new \RuntimeException('OpenAI connection error: ' . Redact::credentials($e->getMessage()));
         } finally {
             ini_set('default_socket_timeout', $prev_timeout ?: '60');
         }
@@ -208,9 +211,9 @@ class OpenAIClient implements LLMClientInterface
                 }
             }
         } catch (\OpenAI\Exceptions\ErrorException $e) {
-            throw new \RuntimeException('OpenAI API error: ' . $e->getMessage());
+            throw new \RuntimeException('OpenAI API error: ' . Redact::credentials($e->getMessage()));
         } catch (\OpenAI\Exceptions\TransporterException $e) {
-            throw new \RuntimeException('OpenAI connection error: ' . $e->getMessage());
+            throw new \RuntimeException('OpenAI connection error: ' . Redact::credentials($e->getMessage()));
         } finally {
             ini_set('default_socket_timeout', $prev_timeout ?: '60');
         }

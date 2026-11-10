@@ -53,60 +53,128 @@ class FigmaStructure
     private const MEANINGLESS_NAME = '/^(frame|group|rectangle|ellipse|vector|section|component)\s*\d*$/i';
 
     /**
-     * Candidate page designs in a node payload, largest first.
+     * Candidate page designs, largest first, with the evidence needed to choose between them.
+     *
+     * **Enumerate mechanically, choose semantically.** This does NOT decide what a page is. It
+     * cannot: "is this a page design or a logo sheet?" is a semantic question, your file proves
+     * names cannot answer it (`Frame 19` twice), and geometry alone cannot either -- `Product
+     * Review Image Only` at 683x582 is a real design and a 683x582 mood board would not be. So
+     * this surfaces candidates broadly with their evidence attached, and a model picks. The
+     * budget caps what that costs, and `report_gap` means "I cannot tell which of these is a
+     * page" is a reportable answer rather than a guess.
+     *
+     * **It descends, because a model cannot choose what it was never shown.** A file may nest its
+     * pages inside a wrapper frame, and the earlier version only looked at canvas children --
+     * which would surface the wrapper and nothing else. Every level up to `$max_depth` is
+     * enumerated and each candidate reports the depth and parent it was found at, so a wrapper
+     * and the pages inside it are both on the table and distinguishable.
+     *
+     * SECTION is no longer special-cased. It happened to be where this file keeps its pages, and
+     * special-casing the one file we have seen is how the next file breaks.
      *
      * @param array<string, mixed> $payload a `/v1/files/{key}/nodes` response
-     * @return array{pages: array<int, array<string, mixed>>, skipped: int, source: string}
+     * @return array{pages: array<int, array<string, mixed>>, skipped: int, truncated: int, source: string}
      */
-    public static function pages(array $payload): array
+    public static function pages(array $payload, int $max_depth = 2, int $limit = 40): array
     {
-        $pages = [];
+        $found = [];
         $skipped = 0;
         $source = '';
 
-        foreach ($payload['nodes'] ?? [] as $node_id => $wrapper) {
+        foreach ($payload['nodes'] ?? [] as $wrapper) {
             $document = $wrapper['document'] ?? null;
 
             if (!is_array($document)) {
                 continue;
             }
 
-            $type = (string) ($document['type'] ?? '');
-            $source = $type;
+            $source = (string) ($document['type'] ?? '');
 
-            // A CANVAS is a container of candidates; anything else IS the candidate, because the
-            // caller asked for that node specifically.
-            $candidates = $type === 'CANVAS' ? ($document['children'] ?? []) : [$document];
-
-            foreach ($candidates as $candidate) {
-                if (!is_array($candidate)) {
-                    continue;
+            // A CANVAS is a container of candidates; any other requested node IS a candidate,
+            // because the caller asked for that node specifically.
+            if ($source === 'CANVAS') {
+                foreach ($document['children'] ?? [] as $child) {
+                    if (is_array($child)) {
+                        self::gather($child, '', 0, $max_depth, $found, $skipped);
+                    }
                 }
-
-                $box = $candidate['absoluteBoundingBox'] ?? [];
-                $width = (float) ($box['width'] ?? 0);
-
-                if (in_array((string) ($candidate['type'] ?? ''), self::DECORATIVE, true)
-                    || ($type === 'CANVAS' && $width < self::MIN_PAGE_WIDTH)
-                ) {
-                    $skipped++;
-                    continue;
-                }
-
-                $pages[] = [
-                    'id' => (string) ($candidate['id'] ?? ''),
-                    'name' => self::readable_name($candidate),
-                    'type' => (string) ($candidate['type'] ?? ''),
-                    'width' => (int) $width,
-                    'height' => (int) ($box['height'] ?? 0),
-                    'bands' => count($candidate['children'] ?? []),
-                ];
+            } else {
+                self::gather($document, '', 0, $max_depth, $found, $skipped);
             }
         }
 
-        usort($pages, static fn(array $a, array $b): int => ($b['width'] * $b['height']) <=> ($a['width'] * $a['height']));
+        usort($found, static fn(array $a, array $b): int => ($b['width'] * $b['height']) <=> ($a['width'] * $a['height']));
 
-        return ['pages' => $pages, 'skipped' => $skipped, 'source' => $source];
+        $truncated = max(0, count($found) - $limit);
+
+        return [
+            'pages' => array_slice($found, 0, $limit),
+            'skipped' => $skipped,
+            // Reported, because a silently cut list is indistinguishable from a complete one.
+            'truncated' => $truncated,
+            'source' => $source,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed>              $node
+     * @param array<int, array<string, mixed>>  $found
+     */
+    private static function gather(
+        array $node,
+        string $parent,
+        int $depth,
+        int $max_depth,
+        array &$found,
+        int &$skipped
+    ): void {
+        $type = (string) ($node['type'] ?? '');
+        $box = $node['absoluteBoundingBox'] ?? [];
+        $width = (float) ($box['width'] ?? 0);
+
+        if (in_array($type, self::DECORATIVE, true) || $width < self::MIN_PAGE_WIDTH) {
+            $skipped++;
+
+            return;
+        }
+
+        $children = array_values(array_filter(
+            $node['children'] ?? [],
+            static fn($c): bool => is_array($c) && !in_array((string) ($c['type'] ?? ''), self::DECORATIVE, true)
+        ));
+
+        $found[] = [
+            'id' => (string) ($node['id'] ?? ''),
+            'name' => self::readable_name($node),
+            'type' => $type,
+            'width' => (int) $width,
+            'height' => (int) ($box['height'] ?? 0),
+            'bands' => count($children),
+            'depth' => $depth,
+            'parent' => $parent,
+            // Sampled by PROMINENCE, not position.
+            //
+            // Sampling the topmost text gave every page the same two strings -- "Shop Herbs
+            // Journal Our story" at 14px, which is the nav bar sitting at y=48 on every page in
+            // the file. Identical evidence on every candidate is no evidence. The largest text is
+            // what distinguishes them: "All Products", "Our Roots. Our Reason. Our Future.",
+            // "What Our Customers are Saying".
+            //
+            // Bands keep reading order, because there sequence is the point. Different question,
+            // different ordering.
+            'sample' => self::prominent($node, 2),
+        ];
+
+        if ($depth >= $max_depth) {
+            return;
+        }
+
+        $label = $node['name'] ?? '';
+        $label = self::readable_name($node) !== '' ? (string) $label : ($type . ' ' . ($node['id'] ?? ''));
+
+        foreach ($children as $child) {
+            self::gather($child, $label, $depth + 1, $max_depth, $found, $skipped);
+        }
     }
 
     /**
@@ -188,6 +256,44 @@ class FigmaStructure
         self::collect_text($node, $collected, $depth);
 
         usort($collected, static fn(array $a, array $b): int => $a['y'] <=> $b['y']);
+
+        $seen = [];
+        $out = [];
+
+        foreach ($collected as $item) {
+            if (isset($seen[$item['text']])) {
+                continue;
+            }
+
+            $seen[$item['text']] = true;
+            $out[] = ['text' => $item['text'], 'size' => $item['size']];
+
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The most prominent text in a node -- largest font first.
+     *
+     * For telling candidates APART, where the biggest type is the identifying one. Ties break on
+     * position so the result is deterministic rather than dependent on tree order.
+     *
+     * @param array<string, mixed> $node
+     * @return array<int, array{text: string, size: int}>
+     */
+    private static function prominent(array $node, int $limit): array
+    {
+        $collected = [];
+        self::collect_text($node, $collected, 0);
+
+        usort(
+            $collected,
+            static fn(array $a, array $b): int => [$b['size'], $a['y']] <=> [$a['size'], $b['y']]
+        );
 
         $seen = [];
         $out = [];

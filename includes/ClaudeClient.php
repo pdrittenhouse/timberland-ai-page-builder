@@ -85,11 +85,14 @@ class ClaudeClient implements LLMClientInterface
                 'stop_reason' => $response->stopReason,
             ];
         } catch (AuthenticationError $e) {
-            throw new \RuntimeException('Invalid API key: ' . $e->getMessage());
+            // Redacted because this is the exact path that printed an API key in clear text:
+            // a 404 body echoed back the value sent as the model name, and the message was
+            // raised verbatim. Provider error text is untrusted output, not a diagnostic.
+            throw new \RuntimeException('Invalid API key: ' . Redact::credentials($e->getMessage()));
         } catch (RateLimitError $e) {
             throw new \RuntimeException('Anthropic rate limit reached. Please wait and try again.');
         } catch (AnthropicError $e) {
-            throw new \RuntimeException('Claude API error: ' . $e->getMessage());
+            throw new \RuntimeException('Claude API error: ' . Redact::credentials($e->getMessage()));
         } finally {
             ini_set('default_socket_timeout', $prev_timeout ?: '60');
         }
@@ -261,11 +264,11 @@ class ClaudeClient implements LLMClientInterface
                 $messages[] = MessageParam::with(role: 'user', content: $results);
             }
         } catch (AuthenticationError $e) {
-            throw new \RuntimeException('Invalid API key: ' . $e->getMessage());
+            throw new \RuntimeException('Invalid API key: ' . Redact::credentials($e->getMessage()));
         } catch (RateLimitError $e) {
             throw new \RuntimeException('Anthropic rate limit reached. Please wait and try again.');
         } catch (AnthropicError $e) {
-            throw new \RuntimeException('Claude API error: ' . $e->getMessage());
+            throw new \RuntimeException('Claude API error: ' . Redact::credentials($e->getMessage()));
         } finally {
             ini_set('default_socket_timeout', $prev_timeout ?: '60');
         }
