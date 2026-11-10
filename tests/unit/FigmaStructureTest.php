@@ -96,6 +96,35 @@ class FigmaStructureTest extends TestCase
         $this->assertSame('Home', $result['page']);
     }
 
+    public function test_each_band_carries_its_own_node_id(): void
+    {
+        // The page's id is not enough: a band is what becomes a block, so provenance has to be
+        // resolvable per section. The first version emitted none, and the failure was invisible
+        // -- the decomposition still had a `node` key, holding an empty string.
+        $payload = $this->payload();
+        $home = null;
+
+        foreach (FigmaStructure::pages($payload)['pages'] as $p) {
+            if ($p['name'] === 'Home') {
+                $home = $p;
+            }
+        }
+
+        $this->assertNotNull($home);
+
+        $ids = array_column(FigmaStructure::bands($payload, $home['id'])['bands'], 'id');
+
+        $this->assertNotEmpty($ids);
+        $this->assertSame($ids, array_filter($ids), 'no band may carry an empty id');
+
+        foreach ($ids as $id) {
+            $this->assertMatchesRegularExpression('/^\d+:\d+$/', $id);
+        }
+
+        // Distinct ids are the point -- they are how a later fetch addresses one section.
+        $this->assertSame(count($ids), count(array_unique($ids)));
+    }
+
     /** @return array<int, array{text: string, size: int}> */
     private function homeTexts(): array
     {

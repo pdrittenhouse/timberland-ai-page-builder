@@ -205,6 +205,12 @@ class FigmaStructure
             $texts = self::texts($child, $max_texts);
 
             $bands[] = [
+                // The node id travels with the band, not just with the page. A band is what
+                // becomes a block, so FG3's "values are pulled by node id" needs band
+                // granularity -- and the trail has to survive the operator reordering or
+                // deleting sections during review. Omitting it left every section's provenance
+                // blank while the decomposition claimed to carry one.
+                'id' => (string) ($child['id'] ?? ''),
                 'name' => self::readable_name($child),
                 'type' => (string) ($child['type'] ?? ''),
                 'width' => (int) ($box['width'] ?? 0),
