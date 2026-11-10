@@ -75,11 +75,26 @@ final class PromptBuilderCharacterisationTest extends TestCase {
         $this->assertStringContainsString( 'acf/accordion-item', $this->build() );
     }
 
-    public function test_field_keys_reach_the_prompt_because_acf_cannot_resolve_names(): void {
+    public function test_field_names_reach_the_prompt_and_acf_keys_deliberately_do_not(): void {
+        // This test previously asserted the OPPOSITE, on the premise that ACF cannot resolve a
+        // field from its name. That premise was wrong, and this is the test that proved it:
+        // `MarkupGenerator::post_process_markup()` step 3 and
+        // `MarkupAssembler::build_data_object()` step 4 both UNCONDITIONALLY overwrite every
+        // `_fieldname` companion from the manifest's key map. The generator's own comment says
+        // why -- "Claude may output wrong field keys that look valid" -- so every key the prompt
+        // taught the model was discarded and recomputed server-side.
+        //
+        // Measured on the real 48-block manifest: those `name => key` pairs were 97% of the
+        // entire per-block prompt cost. Keys are now omitted and names kept.
         $out = $this->build();
 
-        $this->assertStringContainsString( 'field_aaa111', $out );
         $this->assertStringContainsString( 'card_title', $out );
+        $this->assertStringNotContainsString(
+            'field_aaa111',
+            $out,
+            'An ACF field key is back in the prompt. The server overwrites it regardless, so this '
+            . 'is budget spent on a value that is thrown away.'
+        );
     }
 
     public function test_usage_notes_are_surfaced_when_present(): void {

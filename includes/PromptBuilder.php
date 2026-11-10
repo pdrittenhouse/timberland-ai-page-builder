@@ -13,6 +13,80 @@ if (!defined('ABSPATH')) {
 class PromptBuilder
 {
     /** Blocks that are always included (layout scaffolding). */
+    /**
+     * ACF field types that carry CONTENT rather than presentation.
+     *
+     * Only these are listed in the prompt. The rest -- `number`, `select`, `true_false`,
+     * `color_picker`, `editor_palette` and friends -- are the spacing, colour, alignment and
+     * visibility scaffolding that ACF clone expansion multiplies across every block, and the
+     * design system already has defaults for all of it.
+     *
+     * Measured on `acf/promo`, the worst case on natural-rose: 503 non-clone fields, of which
+     * **50 (10%) are content-bearing**. The remainder is 134 `number`, 115 `select`, 58 `group`,
+     * 57 `true_false`, 38 `editor_palette` and 38 `color_picker`. Listing all of them cost ~4,558
+     * tokens for that one block, against a 3,000-8,000 allowance for the whole of component
+     * context.
+     *
+     * A request that genuinely wants styling ("a hero with a blue background") is not served by
+     * this and is the obvious next step -- include the styling fields that match the request
+     * rather than all of them or none. Until then the omission is stated in the prompt so the
+     * model leaves those fields alone instead of inventing names for them.
+     */
+    private const CONTENT_FIELD_TYPES = [
+        'text',
+        'textarea',
+        'wysiwyg',
+        'image',
+        'link',
+        'url',
+        'email',
+        'post_object',
+        'relationship',
+        'page_link',
+        'gallery',
+        'file',
+        'oembed',
+        'repeater',
+    ];
+
+    /**
+     * Token ceiling for the REFERENCE PATTERNS section.
+     *
+     * These are few-shot examples: a saved editor pattern's FULL markup, and a saved pattern can
+     * be arbitrarily long. Measured on updater-starter, two of them cost 3,655 tokens and pushed
+     * an otherwise-compliant prompt to 9,792 -- natural-rose has no saved patterns at all, so
+     * the same code produced 6,449 there and the overage was invisible until both were measured.
+     *
+     * Budgeted lower than the blocks section deliberately. Blocks are the CONTRACT the model
+     * must satisfy; patterns are a worked example of structure it can already infer from the
+     * rules. When something has to give, the example gives.
+     */
+    private const PATTERNS_SECTION_TOKEN_BUDGET = 1100;
+
+    /**
+     * Token ceiling for the AVAILABLE BLOCKS section.
+     *
+     * A COUNT cap cannot guarantee a budget when per-block cost varies by an order of
+     * magnitude: measured on updater-starter, ten blocks under the count cap still reached
+     * ~9,800 tokens, while the same cap on natural-rose produced ~6,400. The section is
+     * therefore filled in relevance order until this is reached, and what did not fit is
+     * reported in the prompt rather than silently dropped.
+     *
+     * Sized by arithmetic against the measured fixed cost, not chosen. The sections that do not
+     * vary with the request come to ~1,910 tokens (RULES 1,550, nesting ~320, post-type ~40),
+     * which leaves ~6,090 of the 8,000 allowance; ~290 goes on section separators and the
+     * dropped-block notice, so ~5,800 is divisible between blocks and patterns. 4,700 here plus
+     * 1,100 for patterns fits with headroom.
+     *
+     * The first attempt set these to 5,000 and 1,200, which SUMMED to more than the allowance --
+     * each section was individually compliant and the prompt was still 8,361 tokens on
+     * updater-starter. Per-section ceilings only work if they add up.
+     *
+     * Core blocks are exempt: without section/row/column the model cannot produce a valid layout
+     * at all, so dropping one to save tokens buys a cheaper broken page.
+     */
+    private const BLOCKS_SECTION_TOKEN_BUDGET = 4700;
+
     private const CORE_BLOCKS = [
         'acf/section',
         'acf/row',
@@ -108,22 +182,26 @@ You generate WordPress Gutenberg block markup for a site using ACF (Advanced Cus
 - IMPORTANT: Always include `"alignText":"left"` and `"alignContent":"top"` in the block JSON alongside `"mode":"preview"`. These are required for Gutenberg block validation.
 
 ## CRITICAL: ACF Data Object
-Every ACF block has a `data` object in its JSON. For EVERY field value you set, you MUST include a companion entry with an underscore prefix mapping to the field key:
+Every ACF block has a `data` object in its JSON. Set the field by NAME only:
 
 ```
 "data": {
-  "field_name": "the value",
-  "_field_name": "field_XXXXX"
+  "field_name": "the value"
 }
 ```
 
-If you omit the `_field_name` → `field_key` companion, ACF will NOT read the value. This is the most important rule.
+Do NOT write `_field_name` companion entries and do NOT write ACF field keys (`field_XXXXX`)
+anywhere. The server adds every companion key itself, from its own authoritative map, after you
+respond — anything you write there is discarded and replaced. Use ONLY the field names listed
+under each block in AVAILABLE BLOCKS; a name that is not listed will be rejected.
 
-## CRITICAL: Field Key Source of Truth
-The AVAILABLE BLOCKS section below contains the authoritative field key map for each block. You MUST ONLY use field keys from those maps. NEVER copy field keys from layout/pattern examples — those examples may contain outdated keys. Always look up the correct key from the block's field key map.
+## CRITICAL: Do Not Copy Field Keys From Examples
+Reference patterns and layouts below may contain `_field_name` companions and `field_XXXXX`
+keys from whenever they were captured. Ignore them entirely and never carry them into your
+output. Keep the structure and the field NAMES; drop the keys.
 
 ## Using Patterns and Layouts
-When the user references a known pattern or layout by name (e.g., "telco hero", "home cards"), use the matching REFERENCE PATTERN or REFERENCE LAYOUT as a starting point. Adapt the content to match the user's request (change text, titles, etc.) but preserve the block structure. Always replace any field keys in the example with the correct keys from the AVAILABLE BLOCKS field key maps.
+When the user references a known pattern or layout by name (e.g., "telco hero", "home cards"), use the matching REFERENCE PATTERN or REFERENCE LAYOUT as a starting point. Adapt the content to match the user's request (change text, titles, etc.) but preserve the block structure. Strip any field keys and `_` companions from the example — the server supplies those.
 
 ## Using Multiple Patterns
 When multiple BASE PATTERNs are provided, combine them in order to build a complete page. Each pattern is a distinct section — output them sequentially. Do not merge patterns into one block — keep each pattern's block structure intact as a separate section of the page.
@@ -154,7 +232,7 @@ Container blocks can have BOTH data fields AND InnerBlocks (child blocks between
 - Always include `"mode":"preview","alignText":"left","alignContent":"top"` in the block JSON.
 
 ## CRITICAL: Image Fields (Module: Image)
-Many blocks use a cloned "Module: Image" with THREE related fields. Image fields in the field key map are annotated with `[IMAGE_TYPE]`, `[IMAGE_FILE]`, or `[IMAGE_URL]`. These MUST be used together correctly:
+Many blocks use a cloned "Module: Image" with THREE related fields. Image fields in each block's field list are annotated with `[IMAGE_TYPE]`, `[IMAGE_FILE]`, or `[IMAGE_URL]`. These MUST be used together correctly:
 
 **For file-based images (default — use when keeping a pattern's existing image):**
 ```
@@ -174,57 +252,127 @@ The `image_image` value MUST be an integer (WordPress attachment ID). ACF hydrat
 - If the user provides a full URL, set `image_type` to `"url"` and put the URL in the `[IMAGE_URL]` field. The system will automatically check if it's a local image and convert to file mode if possible.
 - If the user references an image by filename (e.g., "hero-image.jpg") or description (e.g., "company logo"), put the filename or description string in the `[IMAGE_FILE]` field and set `image_type` to `"file"`. The system will automatically resolve it to the correct attachment ID.
 - If no image is referenced and you're not using a pattern, leave image fields empty.
-- The prefix varies by block (e.g., `image_image`, `bg_image_bg_image`, `image_one_image`). Always check the field key map annotations to identify the correct field names.
+- The prefix varies by block (e.g., `image_image`, `bg_image_bg_image`, `image_one_image`). Always check the field-list annotations to identify the correct field names.
 RULES;
     }
 
     /**
-     * Build the available blocks section with field key maps.
+     * Build the available blocks section: prose, curated usage notes and FIELD NAMES.
+     *
+     * Field keys are deliberately omitted -- see the note at the field list below.
      */
     private function build_blocks_section(array $blocks): string
     {
         $output = "# AVAILABLE BLOCKS\n\n";
+        $spent = 0;
+        $dropped = [];
 
         foreach ($blocks as $name => $block) {
-            $output .= "## {$block['title']} (`{$name}`)\n";
+            // Each block's text is built first and MEASURED before being appended. Testing
+            // `$spent >= budget` on entry was the first attempt and let one oversized block
+            // overshoot by however large it happened to be -- measured at 598 tokens over on
+            // updater-starter. The cost has to be known before the decision, not after.
+            $entry = '';
+            $entry .= "## {$block['title']} (`{$name}`)\n";
 
             if (!empty($block['description'])) {
-                $output .= "{$block['description']}\n";
+                $entry .= "{$block['description']}\n";
             }
 
-            $output .= "- Type: " . ($block['is_container'] ? 'container (jsx)' : 'leaf') . "\n";
+            $entry .= "- Type: " . ($block['is_container'] ? 'container (jsx)' : 'leaf') . "\n";
 
             if (!empty($block['keywords'])) {
-                $output .= "- Keywords: " . implode(', ', $block['keywords']) . "\n";
+                $entry .= "- Keywords: " . implode(', ', $block['keywords']) . "\n";
             }
 
             if (!empty($block['parent'])) {
-                $output .= "- Parent restriction: " . implode(', ', $block['parent']) . "\n";
+                $entry .= "- Parent restriction: " . implode(', ', $block['parent']) . "\n";
             }
 
             if (!empty($block['usage_notes'])) {
-                $output .= "- Usage notes: {$block['usage_notes']}\n";
+                $entry .= "- Usage notes: {$block['usage_notes']}\n";
             }
 
-            // Field key map with image annotations
-            // Skip clone-type fields — they are internal ACF scaffolding (always empty
-            // strings) used to reconstruct nested field structures. The post-processor
-            // handles them automatically; showing them to Claude would be confusing.
+            // FIELD NAMES ONLY. The ACF keys are deliberately not here.
+            //
+            // `MarkupGenerator::post_process_markup()` step 3 and
+            // `MarkupAssembler::build_data_object()` step 4 both UNCONDITIONALLY overwrite every
+            // `_fieldname` companion from the manifest's key map -- the generator's own comment
+            // says why: "Claude may output wrong field keys that look valid. We always replace
+            // with the authoritative keys." So every key sent to the model was discarded and
+            // recomputed server-side.
+            //
+            // Measured on natural-rose's real 48-block manifest before this change: the
+            // `name => key` pairs were **97% of the entire per-block prompt cost** -- 10,060
+            // non-clone fields, ~143,000 tokens if every block were described, against a
+            // 3,000-8,000 token allowance for all component context. A single request for "a
+            // simple contact page" pulled 21 blocks and cost 48,313 tokens, almost all of it
+            // teaching the model values that were then thrown away.
+            //
+            // Clone-type fields stay skipped: they are internal ACF scaffolding (always empty
+            // strings) used to rebuild nested structures, and the post-processor handles them.
             if (!empty($block['field_key_map'])) {
                 $type_map = $block['field_type_map'] ?? [];
-                $output .= "\nField key map:\n";
-                $output .= "```\n";
+                $listed = 0;
+                $omitted = 0;
+                $lines = '';
+
                 foreach ($block['field_key_map'] as $field_name => $field_key) {
-                    if (($type_map[$field_name] ?? '') === 'clone') {
+                    $type = $type_map[$field_name] ?? '';
+
+                    if ($type === 'clone') {
                         continue;
                     }
+
+                    if (!in_array($type, self::CONTENT_FIELD_TYPES, true)) {
+                        $omitted++;
+                        continue;
+                    }
+
                     $annotation = $this->get_image_annotation($field_name, $type_map);
-                    $output .= "  \"{$field_name}\" => \"{$field_key}\"{$annotation}\n";
+                    $lines .= "  {$field_name}{$annotation}\n";
+                    $listed++;
                 }
-                $output .= "```\n";
+
+                if ($listed > 0) {
+                    $entry .= "\nContent fields (give each a value in `data`; field keys are added for you):\n";
+                    $entry .= "```\n" . $lines . "```\n";
+                }
+
+                if ($omitted > 0) {
+                    // Say that they exist. Without this the model infers the listed set is
+                    // exhaustive and invents names for styling it wants to set -- which the
+                    // schema validator now rejects, turning a silent omission into a failed
+                    // generation. Telling it to leave them alone is cheaper than either.
+                    $entry .= "- {$omitted} further styling/layout fields exist (spacing, colour,"
+                        . " alignment, visibility). They are not listed: leave them unset and the"
+                        . " design system's defaults apply. Do NOT invent names for them.\n";
+                }
             }
 
-            $output .= "\n";
+            $entry .= "\n";
+
+            $cost = intdiv(strlen($entry), 4);
+            $is_core = in_array($name, self::CORE_BLOCKS, true);
+
+            // Core blocks go in regardless: without section/row/column the model cannot produce
+            // a valid layout, so dropping one to save tokens buys a cheaper broken page.
+            if (!$is_core && $spent + $cost > self::BLOCKS_SECTION_TOKEN_BUDGET) {
+                $dropped[] = $name;
+                continue;
+            }
+
+            $output .= $entry;
+            $spent += $cost;
+        }
+
+        if ($dropped !== []) {
+            // Named, not hidden. The model can still ask for one of these by name on a later
+            // turn, and a reader of the prompt can see the budget bound rather than wondering
+            // why a block it expected is absent.
+            $output .= 'Also available, not described here to stay inside the context budget: '
+                . implode(', ', array_map(static fn(string $n): string => "`{$n}`", $dropped))
+                . ".\n\n";
         }
 
         return $output;
@@ -305,7 +453,7 @@ RULES;
         $output .= "You MUST use ALL of these patterns, combining them in the order listed. ";
         $output .= "Each pattern contributes a distinct section of the page. ";
         $output .= "Adapt the content (titles, text, etc.) according to the user's prompt, but preserve each pattern's block structure.\n\n";
-        $output .= "IMPORTANT: All field keys in these patterns have been replaced with `USE_FIELD_KEY_MAP`. You MUST look up the correct field keys from the AVAILABLE BLOCKS field key maps above.\n\n";
+        $output .= "IMPORTANT: Field keys in these patterns have been blanked to `USE_FIELD_KEY_MAP`. Delete those entries entirely -- do not look up replacements and do not emit any `_` companion. The server fills them in.\n\n";
         $output .= "IMPORTANT: Preserve ALL image field values (image_type, image attachment IDs, image_url) EXACTLY as they appear unless the user explicitly asks to change an image.\n\n";
 
         $pattern_num = 0;
@@ -391,7 +539,7 @@ RULES;
 
         $output = "# BASE PATTERN: {$title}\n\n";
         $output .= "The user selected this pattern as the starting point. You MUST use this pattern's structure as your base. Adapt the content (titles, text, etc.) according to the user's prompt, but preserve the block structure.\n\n";
-        $output .= "IMPORTANT: All field keys in this pattern have been replaced with `USE_FIELD_KEY_MAP`. You MUST look up the correct field keys from the AVAILABLE BLOCKS field key maps above.\n\n";
+        $output .= "IMPORTANT: Field keys in this pattern have been blanked to `USE_FIELD_KEY_MAP`. Delete those entries entirely -- do not look up replacements and do not emit any `_` companion. The server fills them in.\n\n";
         $output .= "IMPORTANT: Preserve ALL image field values (image_type, image attachment IDs, image_url) EXACTLY as they appear in this pattern unless the user explicitly asks to change an image. Integer values for image fields are attachment IDs — do NOT change them.\n\n";
 
         if (!empty($innerblocks_notes)) {
@@ -517,7 +665,7 @@ RULES;
         }
 
         $output = "# REFERENCE LAYOUTS\n\n";
-        $output .= "These are existing layouts on the site. Use them as structural templates — adapt the content to match the user's request. WARNING: The field keys in these examples may be outdated. ALWAYS replace them with the correct keys from the AVAILABLE BLOCKS field key maps above.\n\n";
+        $output .= "These are existing layouts on the site. Use them as structural templates — adapt the content to match the user's request. WARNING: These examples may carry outdated field keys and `_` companions. Drop them; keep the structure and the field names only.\n\n";
         $output .= "When the user references a layout by name, use the matching layout as the base and modify as requested.\n\n";
 
         foreach ($top as $layout) {
@@ -553,10 +701,35 @@ RULES;
         }
 
         $output = "# REFERENCE PATTERNS\n\n";
-        $output .= "These are saved editor patterns. Use them as structural templates. WARNING: Replace all field keys with the correct keys from the AVAILABLE BLOCKS field key maps above.\n\n";
+        $output .= "These are saved editor patterns. Use them as structural templates. WARNING: Drop every field key and `_` companion from these examples; keep the structure and the field names only.\n\n";
         $output .= "When the user references a pattern by name, use the matching pattern as the base and modify as requested.\n\n";
 
+        $spent = 0;
+        $included = 0;
+
         foreach ($top as $pattern) {
+            $markup = $this->strip_field_keys_from_markup($pattern['content']);
+            $cost = intdiv(strlen($markup), 4);
+
+            $remaining = self::PATTERNS_SECTION_TOKEN_BUDGET - $spent;
+
+            if ($remaining <= 0) {
+                continue;
+            }
+
+            // TRUNCATE rather than skip. Exempting "at least one example" from the ceiling was
+            // the first attempt and did nothing: a single saved pattern on updater-starter is
+            // ~3,655 tokens on its own, so the exemption let the whole overage through. A
+            // truncated example still shows the block nesting, which is the only thing this
+            // section is for -- the content inside it is throwaway sample copy.
+            $truncated = false;
+
+            if ($cost > $remaining) {
+                $markup = substr($markup, 0, $remaining * 4);
+                $truncated = true;
+                $cost = $remaining;
+            }
+
             $output .= "## {$pattern['title']}\n";
             if (!empty($pattern['categories'])) {
                 $output .= "Categories: " . implode(', ', $pattern['categories']) . "\n";
@@ -564,7 +737,19 @@ RULES;
             if (!empty($pattern['usage_notes'])) {
                 $output .= "Notes: {$pattern['usage_notes']}\n";
             }
-            $output .= "```\n" . $this->strip_field_keys_from_markup($pattern['content']) . "\n```\n\n";
+            $output .= "```\n" . $markup . "\n```\n";
+
+            if ($truncated) {
+                // Said out loud. A silently cut example reads as a complete one, and a model
+                // copying its shape would reproduce an unclosed tree.
+                $output .= "(example truncated to stay inside the context budget -- the structure"
+                    . " above is illustrative and may be incomplete)\n";
+            }
+
+            $output .= "\n";
+
+            $spent += $cost;
+            $included++;
         }
 
         return $output;
@@ -588,7 +773,22 @@ RULES;
             }
         }
 
-        // Score remaining blocks by relevance
+        // Score the rest, then take the BEST ones -- not every one that scored at all.
+        //
+        // This used to include any block with `$score > 0`, uncapped. Scoring matches loosely
+        // against names, keywords and descriptions, so a short request pulls in far more than it
+        // needs: measured on natural-rose's real 48-block manifest, "A simple contact page"
+        // selected 21 blocks and cost 48,313 tokens against a 3,000-8,000 allowance for all
+        // component context.
+        //
+        // The cap is derived from that measurement rather than picked: a described block costs
+        // roughly 880 tokens (about 210 field names at ~15 bytes each, plus prose), the fixed
+        // RULES, nesting and post-type sections cost about 1,700, so the allowance affords
+        // around seven blocks. A request genuinely needing more than that is better served by
+        // the two-pass path, where the plan is settled first and only the chosen blocks are
+        // described.
+        $scored = [];
+
         foreach ($all_blocks as $name => $block) {
             if (isset($selected[$name])) {
                 continue;
@@ -597,8 +797,25 @@ RULES;
             $score = $this->score_block($block, $prompt_words, $prompt_lower);
             if ($score > 0) {
                 $block['_relevance_score'] = $score;
-                $selected[$name] = $block;
+                $scored[$name] = $block;
             }
+        }
+
+        // Highest score first; ties keep manifest order, which is alphabetical and therefore
+        // stable. A prompt must produce the same context every time or it cannot be evaluated,
+        // cached or regression-tested.
+        uasort($scored, static fn(array $a, array $b): int => ($b['_relevance_score'] ?? 0) <=> ($a['_relevance_score'] ?? 0));
+
+        // Every scored block is OFFERED, in relevance order. How many actually get described is
+        // decided by the token ceiling in build_blocks_section(), not here.
+        //
+        // There was a count cap here as well, and having both was worse than having either: a
+        // count cannot bound a budget when per-block cost varies tenfold (ten blocks cost ~6,400
+        // tokens on natural-rose and ~9,800 on updater-starter), and blocks cut by the count were
+        // silently absent while blocks cut by the budget were named in the prompt. One mechanism,
+        // one place, one explanation to the model.
+        foreach ($scored as $name => $block) {
+            $selected[$name] = $block;
         }
 
         // If we only matched core blocks, add common blocks as fallback
@@ -737,7 +954,7 @@ RULES;
     }
 
     /**
-     * Get image field annotation for the field key map output.
+     * Get image field annotation for the field list output.
      *
      * Detects "Module: Image" clone patterns:
      * - *_image_type (select) → [IMAGE_TYPE]
@@ -767,7 +984,10 @@ RULES;
     }
 
     /**
-     * Strip field key values from layout/pattern markup so Claude uses the field key maps instead.
+     * Blank field key values in layout/pattern markup so the model does not copy them forward.
+     *
+     * The server overwrites every companion key regardless, so a key in an example is at best
+     * noise and at worst a value the model trusts over the field list.
      * Replaces "_fieldname":"field_xxxxx" with "_fieldname":"LOOKUP_FROM_FIELD_KEY_MAP"
      */
     private function strip_field_keys_from_markup(string $markup): string

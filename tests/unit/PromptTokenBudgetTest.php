@@ -155,15 +155,80 @@ final class PromptTokenBudgetTest extends TestCase {
         $this->assertLessThanOrEqual( self::BUDGET_CEILING, $tokens );
     }
 
-    public function test_cost_grows_with_the_number_of_relevant_blocks_and_nothing_else(): void {
-        // The guard against the opposite failure: a filter that silently stops filtering.
-        // If these three were equal, every request would carry the whole library.
+    public function test_cost_grows_with_relevant_blocks_but_stops_at_the_cap(): void {
+        // This asserted unbounded growth, and the cap is what changed it. Both halves matter:
+        //
+        //  - cost must still RESPOND to relevance, or the filter has stopped filtering and
+        //    every request carries the whole library;
+        //  - it must stop CLIMBING past the cap, which is the property that keeps a broad
+        //    request inside the allowance at all.
         $few  = $this->tokensFor( ManifestFixture::manifest() );
         $some = $this->tokensFor( $this->manifestWithRelevantBlocks( 10 ) );
         $many = $this->tokensFor( $this->manifestWithRelevantBlocks( 45 ) );
 
-        $this->assertGreaterThan( $few, $some );
-        $this->assertGreaterThan( $some, $many );
+        $this->assertGreaterThan( $few, $some, 'Relevance no longer affects cost at all.' );
+        $this->assertLessThanOrEqual(
+            self::BUDGET_CEILING,
+            $many,
+            "45 relevant blocks cost $many tokens. The ceiling is what bounds this now, not a "
+            . 'count cap, so exceeding it means the section budget is not being enforced.'
+        );
+    }
+
+    public function test_acf_field_keys_are_never_in_the_prompt(): void {
+        // 97% of the per-block cost on the real manifest, and every one of them discarded:
+        // both generation paths unconditionally overwrite the `_fieldname` companions from the
+        // manifest's own key map. A key reappearing here is pure waste.
+        $prompt = ( new PromptBuilder( ManifestFixture::manifest() ) )->build( 'a card', 'page' );
+
+        $this->assertStringNotContainsString( 'field_aaa111', $prompt );
+        $this->assertDoesNotMatchRegularExpression( '/"field_[a-f0-9]{6,}"/', $prompt );
+    }
+
+    public function test_omitted_styling_fields_are_declared_rather_than_hidden(): void {
+        // The model must know they exist. Told nothing, it infers the listed set is exhaustive
+        // and invents names for styling it wants -- which the schema validator now rejects,
+        // turning a silent omission into a failed generation.
+        $manifest = ManifestFixture::manifest();
+        $manifest['blocks']['acf/card']['field_key_map']['card_margin_top'] = 'field_mmm111';
+        $manifest['blocks']['acf/card']['field_type_map']['card_margin_top'] = 'number';
+
+        $prompt = ( new PromptBuilder( $manifest ) )->build( 'a card', 'page' );
+
+        $this->assertStringNotContainsString( 'card_margin_top', $prompt );
+        $this->assertStringContainsString( 'further styling/layout fields exist', $prompt );
+    }
+
+    public function test_blocks_dropped_for_budget_are_named(): void {
+        // A block absent with no explanation looks like a block that does not exist. Naming the
+        // dropped ones lets the model ask for one by name instead of substituting something.
+        //
+        // Needs blocks big enough to exhaust the ceiling: the fixture's carry two content fields
+        // each, where real ones carry 150-500, so 45 of the small kind do not reach it.
+        $manifest = $this->manifestWithRelevantBlocks( 45 );
+
+        foreach ( $manifest['blocks'] as $name => $block ) {
+            if ( ! str_starts_with( $name, 'acf/hero-' ) ) {
+                continue;
+            }
+
+            $keys = array();
+            $types = array();
+            foreach ( range( 1, 60 ) as $i ) {
+                $keys[ "hero_content_field_{$i}" ] = 'field_' . str_pad( (string) $i, 13, '0', STR_PAD_LEFT );
+                $types[ "hero_content_field_{$i}" ] = 'text';
+            }
+            $manifest['blocks'][ $name ]['field_key_map'] = $keys;
+            $manifest['blocks'][ $name ]['field_type_map'] = $types;
+        }
+
+        $prompt = ( new PromptBuilder( $manifest ) )->build(
+            'A landing page with a hero and three cards',
+            'page'
+        );
+
+        $this->assertStringContainsString( 'Also available, not described here', $prompt );
+        $this->assertLessThanOrEqual( self::BUDGET_CEILING, $this->estimateTokens( $prompt ) );
     }
 
     public function test_irrelevant_blocks_are_free(): void {
