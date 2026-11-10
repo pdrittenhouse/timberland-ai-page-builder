@@ -244,9 +244,16 @@ class MarkupValidator
 
         // The library works on decoded objects, not associative arrays. An empty data object has
         // to become `{}` rather than `[]`, or it validates as an array against an object schema.
+        // phpcs:disable WordPress.WP.AlternativeFunctions.json_encode_json_encode
+        // -- `wp_json_encode()` is the right call for anything that reaches a response. These
+        // two do not: they only convert arrays into the stdClass tree json-schema requires, and
+        // the result is consumed in the next statement. Using the WordPress wrapper would add a
+        // WordPress dependency to a pure-logic path that the unit suite deliberately runs
+        // without WordPress loaded, which is a worse trade than this annotation.
         $subject = json_decode(json_encode($payload === [] ? new \stdClass() : $payload));
 
         $validator->validate($subject, json_decode(json_encode($schema)));
+        // phpcs:enable WordPress.WP.AlternativeFunctions.json_encode_json_encode
 
         foreach ($validator->getErrors() as $error) {
             $property = (string) ($error['property'] ?? '');

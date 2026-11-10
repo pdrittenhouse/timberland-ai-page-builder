@@ -109,6 +109,11 @@ class SchemaOracle
             return $this->cache[$block_name] = null;
         }
 
+        // A LOCAL schema file on disk. `wp_remote_get()`, which the sniff suggests, is for
+        // HTTP and is categorically the wrong tool; WP_Filesystem would add a dependency for no
+        // safety gain on a read. (The ignore must sit on the line immediately above the code --
+        // it applies to the NEXT line only, so a comment in between silences the comment.)
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
         $schema = json_decode((string) file_get_contents($file), true);
 
         if (!is_array($schema)) {
@@ -235,6 +240,8 @@ class SchemaOracle
             return [];
         }
 
+        // A local manifest file, not a remote fetch -- see schema_for() above.
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
         $decoded = json_decode((string) file_get_contents($path), true);
 
         return is_array($decoded) ? $decoded : [];
