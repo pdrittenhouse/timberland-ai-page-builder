@@ -45,6 +45,10 @@ class FigmaStructure
     /** Nodes that describe how something is drawn rather than what it is. */
     private const DECORATIVE = ['VECTOR', 'LINE', 'ELLIPSE', 'RECTANGLE', 'STAR', 'POLYGON', 'BOOLEAN_OPERATION'];
 
+    /** U+2028 / U+2029. Figma uses these inside a single TEXT node to separate list items. */
+    private const LINE_SEPARATOR = "\u{2028}";
+    private const PARAGRAPH_SEPARATOR = "\u{2029}";
+
     /** A name like `Frame 19` or `Group 33` is Figma's default and says nothing. */
     private const MEANINGLESS_NAME = '/^(frame|group|rectangle|ellipse|vector|section|component)\s*\d*$/i';
 
@@ -158,38 +162,82 @@ class FigmaStructure
     }
 
     /**
-     * The text a node contains, in document order, deduplicated.
+     * The text a node contains, with the two things that actually carry meaning.
+     *
+     * **Font size is the heading/body hierarchy** and the first version threw it away. The
+     * measured hero band carries 68px "Wellness, rooted in nature", 20px body copy, 18px "Watch
+     * video" and 14px nav links -- without the size those are four indistinguishable strings, and
+     * `style.fontSize` is already in the payload. A matching model needs to know which string is
+     * the headline.
+     *
+     * **LINE SEPARATOR is a list separator, not whitespace.** The footer's link columns are single
+     * TEXT nodes using U+2028 between items. A `\s+`-to-space collapse -- which is what the first
+     * version did -- turns a ten-item link list into one prose phrase, and a model reading prose
+     * where there are links matches the wrong block. U+2028/U+2029 become ` / `, which reads as a
+     * list and survives the cap.
+     *
+     * Sorted by y, not document order, for the same reason the bands are: the hero's 14px nav sits
+     * at y=48 while its 68px headline is at y=426, so document order puts the headline second.
      *
      * @param array<string, mixed> $node
-     * @return array<int, string>
+     * @return array<int, array{text: string, size: int}>
      */
     private static function texts(array $node, int $limit, int $depth = 0): array
     {
-        if ($depth > 14) {
-            return [];
-        }
+        $collected = [];
+        self::collect_text($node, $collected, $depth);
 
+        usort($collected, static fn(array $a, array $b): int => $a['y'] <=> $b['y']);
+
+        $seen = [];
         $out = [];
 
+        foreach ($collected as $item) {
+            if (isset($seen[$item['text']])) {
+                continue;
+            }
+
+            $seen[$item['text']] = true;
+            $out[] = ['text' => $item['text'], 'size' => $item['size']];
+
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<string, mixed>                                 $node
+     * @param array<int, array{text: string, size: int, y: float}>  $out
+     */
+    private static function collect_text(array $node, array &$out, int $depth): void
+    {
+        if ($depth > 14) {
+            return;
+        }
+
         if (($node['type'] ?? '') === 'TEXT' && !empty($node['characters'])) {
-            $text = trim(preg_replace('/\s+/', ' ', (string) $node['characters']) ?? '');
+            // Separators first, so the whitespace collapse below cannot eat them.
+            $raw = str_replace([self::LINE_SEPARATOR, self::PARAGRAPH_SEPARATOR], ' / ', (string) $node['characters']);
+            $text = trim((string) preg_replace('/\s+/', ' ', $raw));
+            $text = trim($text, " /\t\n\r");
 
             if ($text !== '') {
-                $out[] = mb_substr($text, 0, 80);
+                $out[] = [
+                    'text' => mb_substr($text, 0, 90),
+                    'size' => (int) round((float) ($node['style']['fontSize'] ?? 0)),
+                    'y' => (float) ($node['absoluteBoundingBox']['y'] ?? 0),
+                ];
             }
         }
 
         foreach ($node['children'] ?? [] as $child) {
-            if (count($out) >= $limit) {
-                break;
-            }
-
             if (is_array($child)) {
-                $out = array_merge($out, self::texts($child, $limit - count($out), $depth + 1));
+                self::collect_text($child, $out, $depth + 1);
             }
         }
-
-        return array_slice(array_values(array_unique($out)), 0, $limit);
     }
 
     /**

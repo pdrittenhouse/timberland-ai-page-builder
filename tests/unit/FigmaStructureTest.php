@@ -96,10 +96,9 @@ class FigmaStructureTest extends TestCase
         $this->assertSame('Home', $result['page']);
     }
 
-    public function test_text_is_extracted_because_names_carry_nothing(): void
+    /** @return array<int, array{text: string, size: int}> */
+    private function homeTexts(): array
     {
-        // `Frame 19` appears TWICE in this page. The text is the only thing that distinguishes
-        // the bands, and the plan does not mention extracting it.
         $payload = $this->payload();
         $home = null;
 
@@ -109,11 +108,48 @@ class FigmaStructureTest extends TestCase
             }
         }
 
+        $this->assertNotNull($home);
         $bands = FigmaStructure::bands($payload, $home['id'])['bands'];
-        $allText = implode(' ', array_merge(...array_column($bands, 'texts')));
 
-        $this->assertStringContainsString('Wellness, rooted in nature', $allText);
-        $this->assertStringContainsString('Our story', $allText);
+        return array_merge(...array_column($bands, 'texts'));
+    }
+
+    public function test_text_is_extracted_because_names_carry_nothing(): void
+    {
+        // `Frame 19` appears TWICE in this page. The text is the only thing that distinguishes
+        // the bands, and the plan does not mention extracting it.
+        $all = implode(' ', array_column($this->homeTexts(), 'text'));
+
+        $this->assertStringContainsString('Wellness, rooted in nature', $all);
+        $this->assertStringContainsString('Our Roots. Our Reason. Our Future.', $all);
+    }
+
+    public function test_font_size_is_kept_because_it_is_the_heading_hierarchy(): void
+    {
+        // Without the size, a 68px headline and a 14px nav link are indistinguishable strings.
+        $texts = $this->homeTexts();
+        $headline = null;
+
+        foreach ($texts as $t) {
+            if (str_contains($t['text'], 'Wellness, rooted in nature')) {
+                $headline = $t;
+            }
+        }
+
+        $this->assertNotNull($headline);
+        $this->assertGreaterThan(40, $headline['size'], 'the hero headline is 68px and must be reported as large');
+        $this->assertGreaterThan(1, count(array_unique(array_column($texts, 'size'))), 'a flat size list carries no hierarchy');
+    }
+
+    public function test_line_separators_become_a_readable_list_not_one_phrase(): void
+    {
+        // The footer's link columns are SINGLE text nodes using U+2028 between items. Collapsing
+        // that to spaces turns ten links into one prose phrase, and prose matches a different
+        // block than a link list does.
+        $all = implode(' ', array_column($this->homeTexts(), 'text'));
+
+        $this->assertStringContainsString('Herbs / Teas / Tinctures', $all);
+        $this->assertStringNotContainsString("\u{2028}", $all, 'the raw separator must not reach a consumer');
     }
 
     public function test_a_default_figma_name_is_reported_as_empty(): void

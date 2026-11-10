@@ -53,7 +53,7 @@
             "children": [
              {
               "id": "131:3",
-              "name": "Herbs\u2028 Teas\u2028 Tinctures\u2028 Extracts\u2028 Capsules\u2028 Powders\u2028 Syrups\u2028 Tonics\u2028 Elixirs\u2028 Bitters\u2028 Oxymels\u2028 Glycerites\u2028 Herbal Vinegars\u2028 Herbal Honeys\u2028 Infused Oils\u2028 Essential Oils\u2028 Flower Essences\u2028 Herbal Blends",
+              "name": "Herbs  Teas  Tinctures  Extracts  Capsules  Powders  Syrups  Tonics  Elixirs  Bitters  Oxymels  Glycerites  Herbal Vinegars  Herbal Honeys  Infused Oils  Essential Oils  Flower Essences  Herbal Blends",
               "type": "TEXT",
               "absoluteBoundingBox": {
                "x": -1519,
@@ -61,11 +61,15 @@
                "width": 150,
                "height": 452
               },
-              "characters": "Herbs\u2028 Teas\u2028 Tinctures\u2028 Extracts\u2028 Capsules\u2028 Powders\u2028 Syrups\u2028 Tonics\u2028 Elixirs\u2028 Bitters\u2028 Oxymels\u2028 Glycerites\u2028 Herbal Vinegars\u2028 Herbal Honeys\u2028 Infused Oils\u2028 Essential Oils\u2028 Flower Essences\u2028 Herbal Blends"
+              "characters": "Herbs  Teas  Tinctures  Extracts  Capsules  Powders  Syrups  Tonics  Elixirs  Bitters  Oxymels  Glycerites  Herbal Vinegars  Herbal Honeys  Infused Oils  Essential Oils  Flower Essences  Herbal Blends",
+              "style": {
+               "fontSize": 14,
+               "fontWeight": 400
+              }
              },
              {
               "id": "131:7",
-              "name": "Superfoods\u2028 Mushrooms\u2028 Adaptogens\u2028 Spices\u2028 Roots\u2028 Flowers\u2028 Leaves\u2028 Barks\u2028 Seeds & Berries\u2028 Salves\u2028 Balms\u2028 Ointments\u2028 Creams\u2028 Lotions\u2028 Body Butters\u2028 Body Oils\u2028 Massage Oils\u2028 Soaps",
+              "name": "Superfoods  Mushrooms  Adaptogens  Spices  Roots  Flowers  Leaves  Barks  Seeds & Berries  Salves  Balms  Ointments  Creams  Lotions  Body Butters  Body Oils  Massage Oils  Soaps",
               "type": "TEXT",
               "absoluteBoundingBox": {
                "x": -1369,
@@ -73,11 +77,15 @@
                "width": 150,
                "height": 452
               },
-              "characters": " Superfoods\u2028 Mushrooms\u2028 Adaptogens\u2028 Spices\u2028 Roots\u2028 Flowers\u2028 Leaves\u2028 Barks\u2028 Seeds & Berries\u2028 Salves\u2028 Balms\u2028 Ointments\u2028 Creams\u2028 Lotions\u2028 Body Butters\u2028 Body Oils\u2028 Massage Oils\u2028 Soaps"
+              "characters": " Superfoods  Mushrooms  Adaptogens  Spices  Roots  Flowers  Leaves  Barks  Seeds & Berries  Salves  Balms  Ointments  Creams  Lotions  Body Butters  Body Oils  Massage Oils  Soaps",
+              "style": {
+               "fontSize": 14,
+               "fontWeight": 400
+              }
              },
              {
               "id": "131:8",
-              "name": "Body Washes\u2028 Body Scrubs\u2028 Bath Salts\u2028 Bath Soaks\u2028 Bath Oils\u2028 Facial Oils\u2028 Facial Serums\u2028 Cleansers\u2028 Toners\u2028 Moisturizers\u2028 Face Masks\u2028 Lip Care\u2028 Hand Care\u2028 Foot Care\u2028 Hair Oils\u2028 Shampoos\u2028 Conditioners\u2028 Scalp Care",
+              "name": "Body Washes  Body Scrubs  Bath Salts  Bath Soaks  Bath Oils  Facial Oils  Facial Serums  Cleansers  Toners  Moisturizers  Face Masks  Lip Care  Hand Care  Foot Care  Hair Oils  Shampoos  Conditioners  Scalp Care",
               "type": "TEXT",
               "absoluteBoundingBox": {
                "x": -1219,
@@ -85,11 +93,15 @@
                "width": 150,
                "height": 452
               },
-              "characters": " Body Washes\u2028 Body Scrubs\u2028 Bath Salts\u2028 Bath Soaks\u2028 Bath Oils\u2028 Facial Oils\u2028 Facial Serums\u2028 Cleansers\u2028 Toners\u2028 Moisturizers\u2028 Face Masks\u2028 Lip Care\u2028 Hand Care\u2028 Foot Care\u2028 Hair Oils\u2028 Shampoos\u2028 Conditioners\u2028 Scalp Care"
+              "characters": " Body Washes  Body Scrubs  Bath Salts  Bath Soaks  Bath Oils  Facial Oils  Facial Serums  Cleansers  Toners  Moisturizers  Face Masks  Lip Care  Hand Care  Foot Care  Hair Oils  Shampoos  Conditioners  Scalp Care",
+              "style": {
+               "fontSize": 14,
+               "fontWeight": 400
+              }
              },
              {
               "id": "131:9",
-              "name": "Deodorants\u2028 Oral Care\u2028 Aromatherapy\u2028 Incense\u2028 Candles\u2028 Herbal Sachets\u2028 Wellness Kits\u2028 Herbal Starter Kits\u2028 Tea Collections\u2028 Gift Sets\u2028 Accessories\u2028 Tea Accessories\u2028 Herbal Tools\u2028 Books & Guides",
+              "name": "Deodorants  Oral Care  Aromatherapy  Incense  Candles  Herbal Sachets  Wellness Kits  Herbal Starter Kits  Tea Collections  Gift Sets  Accessories  Tea Accessories  Herbal Tools  Books & Guides",
               "type": "TEXT",
               "absoluteBoundingBox": {
                "x": -1069,
@@ -97,7 +109,11 @@
                "width": 150,
                "height": 452
               },
-              "characters": " Deodorants\u2028 Oral Care\u2028 Aromatherapy\u2028 Incense\u2028 Candles\u2028 Herbal Sachets\u2028 Wellness Kits\u2028 Herbal Starter Kits\u2028 Tea Collections\u2028 Gift Sets\u2028 Accessories\u2028 Tea Accessories\u2028 Herbal Tools\u2028 Books & Guides"
+              "characters": " Deodorants  Oral Care  Aromatherapy  Incense  Candles  Herbal Sachets  Wellness Kits  Herbal Starter Kits  Tea Collections  Gift Sets  Accessories  Tea Accessories  Herbal Tools  Books & Guides",
+              "style": {
+               "fontSize": 14,
+               "fontWeight": 400
+              }
              }
             ]
            },
@@ -114,7 +130,7 @@
             "children": [
              {
               "id": "131:13",
-              "name": "Herbal Wellness\u2028 Herb Profiles\u2028 Recipes & Rituals\u2028 Herbal Basics\u2028 Seasonal Wellness\u2028 Mind & Mood\u2028 Sleep & Rest\u2028 Food & Nutrition\u2028 Natural Body Care\u2028 DIY Herbalism\u2028 Home Apothecary\u2028 Plant Wisdom\u2028 Ingredient Stories\u2028 Garden & Grow\u2028 Everyday Wellness\u2028 Women\u2019s Wellness\u2028 Healthy Living\u2028 Sustainability",
+              "name": "Herbal Wellness  Herb Profiles  Recipes & Rituals  Herbal Basics  Seasonal Wellness  Mind & Mood  Sleep & Rest  Food & Nutrition  Natural Body Care  DIY Herbalism  Home Apothecary  Plant Wisdom  Ingredient Stories  Garden & Grow  Everyday Wellness  Women’s Wellness  Healthy Living  Sustainability",
               "type": "TEXT",
               "absoluteBoundingBox": {
                "x": -897,
@@ -122,11 +138,15 @@
                "width": 150,
                "height": 452
               },
-              "characters": "Herbal Wellness\u2028 Herb Profiles\u2028 Recipes & Rituals\u2028 Herbal Basics\u2028 Seasonal Wellness\u2028 Mind & Mood\u2028 Sleep & Rest\u2028 Food & Nutrition\u2028 Natural Body Care\u2028 DIY Herbalism\u2028 Home Apothecary\u2028 Plant Wisdom\u2028 Ingredient Stories\u2028 Garden & Grow\u2028 Everyday Wellness\u2028 Women\u2019s Wellness\u2028 Healthy Living\u2028 Sustainability"
+              "characters": "Herbal Wellness  Herb Profiles  Recipes & Rituals  Herbal Basics  Seasonal Wellness  Mind & Mood  Sleep & Rest  Food & Nutrition  Natural Body Care  DIY Herbalism  Home Apothecary  Plant Wisdom  Ingredient Stories  Garden & Grow  Everyday Wellness  Women’s Wellness  Healthy Living  Sustainability",
+              "style": {
+               "fontSize": 14,
+               "fontWeight": 400
+              }
              },
              {
               "id": "131:14",
-              "name": "Stress & Calm\u2028 Energy & Vitality\u2028 Digestive Wellness\u2028 Immune Support\u2028 Focus & Clarity\u2028 Emotional Balance\u2028 Hormonal Balance\u2028 Heart Health\u2028 Respiratory Wellness\u2028 Joint & Mobility\u2028 Muscle & Recovery\u2028 Skin Health\u2028 Hair & Scalp Health\u2028 Gut Health\u2028 Metabolic Wellness\u2028 Circulation\u2028 Detox & Cleansing\u2028 Healthy Aging",
+              "name": "Stress & Calm  Energy & Vitality  Digestive Wellness  Immune Support  Focus & Clarity  Emotional Balance  Hormonal Balance  Heart Health  Respiratory Wellness  Joint & Mobility  Muscle & Recovery  Skin Health  Hair & Scalp Health  Gut Health  Metabolic Wellness  Circulation  Detox & Cleansing  Healthy Aging",
               "type": "TEXT",
               "absoluteBoundingBox": {
                "x": -747,
@@ -134,11 +154,15 @@
                "width": 150,
                "height": 452
               },
-              "characters": "Stress & Calm\u2028 Energy & Vitality\u2028 Digestive Wellness\u2028 Immune Support\u2028 Focus & Clarity\u2028 Emotional Balance\u2028 Hormonal Balance\u2028 Heart Health\u2028 Respiratory Wellness\u2028 Joint & Mobility\u2028 Muscle & Recovery\u2028 Skin Health\u2028 Hair & Scalp Health\u2028 Gut Health\u2028 Metabolic Wellness\u2028 Circulation\u2028 Detox & Cleansing\u2028 Healthy Aging"
+              "characters": "Stress & Calm  Energy & Vitality  Digestive Wellness  Immune Support  Focus & Clarity  Emotional Balance  Hormonal Balance  Heart Health  Respiratory Wellness  Joint & Mobility  Muscle & Recovery  Skin Health  Hair & Scalp Health  Gut Health  Metabolic Wellness  Circulation  Detox & Cleansing  Healthy Aging",
+              "style": {
+               "fontSize": 14,
+               "fontWeight": 400
+              }
              },
              {
               "id": "131:15",
-              "name": "Men\u2019s Wellness\u2028 Children\u2019s Wellness\u2028 Family Wellness\u2028 Pregnancy & Postpartum\u2028 Sexual Wellness\u2028 Urinary Wellness\u2028 Liver Support\u2028 Kidney Support\u2028 Bone Health\u2028 Oral Wellness\u2028 Allergy & Sinus Support\u2028 Cold & Flu Season\u2028 Pain & Comfort\u2028 Headache Support\u2028 Relaxation\u2028 Morning Rituals",
+              "name": "Men’s Wellness  Children’s Wellness  Family Wellness  Pregnancy & Postpartum  Sexual Wellness  Urinary Wellness  Liver Support  Kidney Support  Bone Health  Oral Wellness  Allergy & Sinus Support  Cold & Flu Season  Pain & Comfort  Headache Support  Relaxation  Morning Rituals",
               "type": "TEXT",
               "absoluteBoundingBox": {
                "x": -597,
@@ -146,11 +170,15 @@
                "width": 150,
                "height": 452
               },
-              "characters": "Men\u2019s Wellness\u2028 Children\u2019s Wellness\u2028 Family Wellness\u2028 Pregnancy & Postpartum\u2028 Sexual Wellness\u2028 Urinary Wellness\u2028 Liver Support\u2028 Kidney Support\u2028 Bone Health\u2028 Oral Wellness\u2028 Allergy & Sinus Support\u2028 Cold & Flu Season\u2028 Pain & Comfort\u2028 Headache Support\u2028 Relaxation\u2028  Morning Rituals"
+              "characters": "Men’s Wellness  Children’s Wellness  Family Wellness  Pregnancy & Postpartum  Sexual Wellness  Urinary Wellness  Liver Support  Kidney Support  Bone Health  Oral Wellness  Allergy & Sinus Support  Cold & Flu Season  Pain & Comfort  Headache Support  Relaxation   Morning Rituals",
+              "style": {
+               "fontSize": 14,
+               "fontWeight": 400
+              }
              },
              {
               "id": "131:16",
-              "name": "Meditation & Mindfulness\u2028 Evening Rituals\u2028 Self-Care\u2028 Beauty From Within\u2028 Hydration\u2028 Nourishment\u2028 Rest & Recovery\u2028 Active Living\u2028 Weight & Metabolism\u2028 Travel Wellness\u2028 Workday Wellness\u2028 Seasonal Living\u2028 Preventive Wellness\u2028 Longevity\u2028 Daily Balance",
+              "name": "Meditation & Mindfulness  Evening Rituals  Self-Care  Beauty From Within  Hydration  Nourishment  Rest & Recovery  Active Living  Weight & Metabolism  Travel Wellness  Workday Wellness  Seasonal Living  Preventive Wellness  Longevity  Daily Balance",
               "type": "TEXT",
               "absoluteBoundingBox": {
                "x": -447,
@@ -158,7 +186,11 @@
                "width": 150,
                "height": 452
               },
-              "characters": "Meditation & Mindfulness\u2028 Evening Rituals\u2028 Self-Care\u2028 Beauty From Within\u2028 Hydration\u2028 Nourishment\u2028 Rest & Recovery\u2028 Active Living\u2028 Weight & Metabolism\u2028 Travel Wellness\u2028 Workday Wellness\u2028 Seasonal Living\u2028 Preventive Wellness\u2028 Longevity\u2028 Daily Balance"
+              "characters": "Meditation & Mindfulness  Evening Rituals  Self-Care  Beauty From Within  Hydration  Nourishment  Rest & Recovery  Active Living  Weight & Metabolism  Travel Wellness  Workday Wellness  Seasonal Living  Preventive Wellness  Longevity  Daily Balance",
+              "style": {
+               "fontSize": 14,
+               "fontWeight": 400
+              }
              }
             ]
            },
@@ -172,7 +204,11 @@
              "width": 99,
              "height": 28
             },
-            "characters": "Categories"
+            "characters": "Categories",
+            "style": {
+             "fontSize": 16,
+             "fontWeight": 400
+            }
            },
            {
             "id": "131:17",
@@ -184,7 +220,11 @@
              "width": 99,
              "height": 28
             },
-            "characters": "Needs"
+            "characters": "Needs",
+            "style": {
+             "fontSize": 16,
+             "fontWeight": 400
+            }
            },
            {
             "id": "131:18",
@@ -467,11 +507,40 @@
                "y": 4935,
                "width": 106,
                "height": 32
-              }
+              },
+              "children": [
+               {
+                "id": "127:405",
+                "name": "Rectangle 1",
+                "type": "VECTOR",
+                "absoluteBoundingBox": {
+                 "x": -861,
+                 "y": 4935,
+                 "width": 106,
+                 "height": 32
+                }
+               },
+               {
+                "id": "127:406",
+                "name": "Our story",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                 "x": -847,
+                 "y": 4943,
+                 "width": 79,
+                 "height": 17
+                },
+                "characters": "Our story",
+                "style": {
+                 "fontSize": 12,
+                 "fontWeight": 400
+                }
+               }
+              ]
              },
              {
               "id": "127:403",
-              "name": "We're on a mission to make high-quality, plant-based wellness accessible for everyday life \u2014 and to create a healthier, more balanced world for generations to come.",
+              "name": "We're on a mission to make high-quality, plant-based wellness accessible for everyday life — and to create a healthier, more balanced world for generations to come.",
               "type": "TEXT",
               "absoluteBoundingBox": {
                "x": -861,
@@ -479,7 +548,11 @@
                "width": 505,
                "height": 145
               },
-              "characters": "We're on a mission to make high-quality, plant-based wellness accessible for everyday life \u2014 and to create a healthier, more balanced world for generations to come."
+              "characters": "We're on a mission to make high-quality, plant-based wellness accessible for everyday life — and to create a healthier, more balanced world for generations to come.",
+              "style": {
+               "fontSize": 24,
+               "fontWeight": 400
+              }
              },
              {
               "id": "124:347",
@@ -491,7 +564,11 @@
                "width": 505,
                "height": 140
               },
-              "characters": "Our Roots. Our Reason. Our Future."
+              "characters": "Our Roots. Our Reason. Our Future.",
+              "style": {
+               "fontSize": 52,
+               "fontWeight": 400
+              }
              },
              {
               "id": "132:124",
@@ -514,7 +591,11 @@
                "width": 505,
                "height": 29
               },
-              "characters": "Our Purpose"
+              "characters": "Our Purpose",
+              "style": {
+               "fontSize": 24,
+               "fontWeight": 400
+              }
              },
              {
               "id": "127:402",
@@ -525,7 +606,20 @@
                "y": 4531,
                "width": 661,
                "height": 692
-              }
+              },
+              "children": [
+               {
+                "id": "127:401",
+                "name": "pexels-yankrukov-5480036 1",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                 "x": -1682,
+                 "y": 4461,
+                 "width": 1039,
+                 "height": 693
+                }
+               }
+              ]
              }
             ]
            },
@@ -549,11 +643,40 @@
                "y": 5593,
                "width": 165,
                "height": 32
-              }
+              },
+              "children": [
+               {
+                "id": "128:419",
+                "name": "Rectangle 1",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                 "x": -1525,
+                 "y": 5593,
+                 "width": 165,
+                 "height": 32
+                }
+               },
+               {
+                "id": "128:420",
+                "name": "Explore the herb library",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                 "x": -1511,
+                 "y": 5601,
+                 "width": 136,
+                 "height": 17
+                },
+                "characters": "Explore the herb library",
+                "style": {
+                 "fontSize": 12,
+                 "fontWeight": 400
+                }
+               }
+              ]
              },
              {
               "id": "128:422",
-              "name": "Every herb has a story, a tradition, and a purpose. Explore the botanicals we use and learn how they\u2019ve been traditionally incorporated into everyday wellness.",
+              "name": "Every herb has a story, a tradition, and a purpose. Explore the botanicals we use and learn how they’ve been traditionally incorporated into everyday wellness.",
               "type": "TEXT",
               "absoluteBoundingBox": {
                "x": -1525,
@@ -561,7 +684,11 @@
                "width": 505,
                "height": 116
               },
-              "characters": "Every herb has a story, a tradition, and a purpose. Explore the botanicals we use and learn how they\u2019ve been traditionally incorporated into everyday wellness."
+              "characters": "Every herb has a story, a tradition, and a purpose. Explore the botanicals we use and learn how they’ve been traditionally incorporated into everyday wellness.",
+              "style": {
+               "fontSize": 24,
+               "fontWeight": 400
+              }
              },
              {
               "id": "128:421",
@@ -573,7 +700,11 @@
                "width": 505,
                "height": 186
               },
-              "characters": "Meet the plants behind the remedies"
+              "characters": "Meet the plants behind the remedies",
+              "style": {
+               "fontSize": 52,
+               "fontWeight": 400
+              }
              },
              {
               "id": "132:128",
@@ -596,7 +727,11 @@
                "width": 505,
                "height": 29
               },
-              "characters": "Herb Library"
+              "characters": "Herb Library",
+              "style": {
+               "fontSize": 24,
+               "fontWeight": 400
+              }
              },
              {
               "id": "128:423",
@@ -607,7 +742,20 @@
                "y": 5167,
                "width": 661,
                "height": 692
-              }
+              },
+              "children": [
+               {
+                "id": "128:424",
+                "name": "pexels-yankrukov-5480036 1",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                 "x": -1255,
+                 "y": 5106,
+                 "width": 1258,
+                 "height": 839
+                }
+               }
+              ]
              }
             ]
            },
@@ -631,7 +779,36 @@
                "y": 6177,
                "width": 126,
                "height": 32
-              }
+              },
+              "children": [
+               {
+                "id": "128:414",
+                "name": "Rectangle 1",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                 "x": -863,
+                 "y": 6177,
+                 "width": 126,
+                 "height": 32
+                }
+               },
+               {
+                "id": "128:415",
+                "name": "Read our journal",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                 "x": -849,
+                 "y": 6185,
+                 "width": 97,
+                 "height": 17
+                },
+                "characters": "Read our journal",
+                "style": {
+                 "fontSize": 12,
+                 "fontWeight": 400
+                }
+               }
+              ]
              },
              {
               "id": "128:409",
@@ -643,7 +820,11 @@
                "width": 505,
                "height": 186
               },
-              "characters": "Knowledge for a more natural tomorrow"
+              "characters": "Knowledge for a more natural tomorrow",
+              "style": {
+               "fontSize": 52,
+               "fontWeight": 400
+              }
              },
              {
               "id": "128:410",
@@ -655,7 +836,11 @@
                "width": 505,
                "height": 116
               },
-              "characters": "Explore herbal wisdom, seasonal living, and practical tips for everyday wellness. Thoughtfully written, rooted in tradition, and made for modern life."
+              "characters": "Explore herbal wisdom, seasonal living, and practical tips for everyday wellness. Thoughtfully written, rooted in tradition, and made for modern life.",
+              "style": {
+               "fontSize": 24,
+               "fontWeight": 400
+              }
              },
              {
               "id": "132:131",
@@ -678,7 +863,11 @@
                "width": 505,
                "height": 29
               },
-              "characters": "The Journal"
+              "characters": "The Journal",
+              "style": {
+               "fontSize": 24,
+               "fontWeight": 400
+              }
              },
              {
               "id": "128:411",
@@ -689,7 +878,20 @@
                "y": 5751,
                "width": 661,
                "height": 692
-              }
+              },
+              "children": [
+               {
+                "id": "128:412",
+                "name": "pexels-yankrukov-5480036 1",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                 "x": -1696,
+                 "y": 5751,
+                 "width": 780,
+                 "height": 520
+                }
+               }
+              ]
              }
             ]
            }
@@ -739,7 +941,36 @@
                "y": 4245,
                "width": 154,
                "height": 32
-              }
+              },
+              "children": [
+               {
+                "id": "126:396",
+                "name": "Rectangle 1",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                 "x": -1020,
+                 "y": 4245,
+                 "width": 154,
+                 "height": 32
+                }
+               },
+               {
+                "id": "126:397",
+                "name": "Explore all Categories",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                 "x": -1006,
+                 "y": 4254,
+                 "width": 125,
+                 "height": 17
+                },
+                "characters": "Explore all Categories",
+                "style": {
+                 "fontSize": 12,
+                 "fontWeight": 400
+                }
+               }
+              ]
              },
              {
               "id": "122:308",
@@ -750,7 +981,64 @@
                "y": 3439,
                "width": 1328.943603515625,
                "height": 749.4341430664062
-              }
+              },
+              "children": [
+               {
+                "id": "122:307",
+                "name": "Group 63",
+                "type": "GROUP",
+                "absoluteBoundingBox": {
+                 "x": -610.324951171875,
+                 "y": 3824.7314453125,
+                 "width": 362.26849365234375,
+                 "height": 363.70269775390625
+                }
+               },
+               {
+                "id": "122:305",
+                "name": "Group 61",
+                "type": "GROUP",
+                "absoluteBoundingBox": {
+                 "x": -996.0564575195312,
+                 "y": 3824.7314453125,
+                 "width": 362.26849365234375,
+                 "height": 363.70269775390625
+                }
+               },
+               {
+                "id": "122:306",
+                "name": "Group 62",
+                "type": "GROUP",
+                "absoluteBoundingBox": {
+                 "x": -610.324951171875,
+                 "y": 3439,
+                 "width": 362.26849365234375,
+                 "height": 363.43414306640625
+                }
+               },
+               {
+                "id": "122:304",
+                "name": "Group 60",
+                "type": "GROUP",
+                "absoluteBoundingBox": {
+                 "x": -996.0564575195312,
+                 "y": 3439,
+                 "width": 362.26849365234375,
+                 "height": 362.26849365234375
+                }
+               },
+               {
+                "id": "122:303",
+                "name": "Group 59",
+                "type": "GROUP",
+                "absoluteBoundingBox": {
+                 "x": -1577,
+                 "y": 3439,
+                 "width": 557.4805297851562,
+                 "height": 748
+                }
+               }
+              ]
              },
              {
               "id": "114:199",
@@ -762,7 +1050,11 @@
                "width": 604,
                "height": 50
               },
-              "characters": "From herbs and herbal teas, to tinctures and body care, our plant-based products are crafted to support your natural wellness journey."
+              "characters": "From herbs and herbal teas, to tinctures and body care, our plant-based products are crafted to support your natural wellness journey.",
+              "style": {
+               "fontSize": 16,
+               "fontWeight": 400
+              }
              },
              {
               "id": "108:194",
@@ -774,7 +1066,11 @@
                "width": 780,
                "height": 124
               },
-              "characters": "Botanical Collections for Every Part of Your Well-Being"
+              "characters": "Botanical Collections for Every Part of Your Well-Being",
+              "style": {
+               "fontSize": 52,
+               "fontWeight": 400
+              }
              },
              {
               "id": "140:493",
@@ -785,7 +1081,36 @@
                "y": 3143,
                "width": 274,
                "height": 52
-              }
+              },
+              "children": [
+               {
+                "id": "140:494",
+                "name": "Group",
+                "type": "GROUP",
+                "absoluteBoundingBox": {
+                 "x": -1079.9250183105469,
+                 "y": 3145.9998090640943,
+                 "width": 263.85001003368313,
+                 "height": 45.00019093590572
+                }
+               },
+               {
+                "id": "140:498",
+                "name": "Shop by Category",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                 "x": -1042,
+                 "y": 3166,
+                 "width": 186,
+                 "height": 19
+                },
+                "characters": "Shop by Category",
+                "style": {
+                 "fontSize": 20,
+                 "fontWeight": 400
+                }
+               }
+              ]
              }
             ]
            }
@@ -835,7 +1160,63 @@
                "y": 2244,
                "width": 1280.6666259765625,
                "height": 944.6666259765625
-              }
+              },
+              "children": [
+               {
+                "id": "47:175",
+                "name": "Frame 7",
+                "type": "FRAME",
+                "absoluteBoundingBox": {
+                 "x": -1577,
+                 "y": 2315,
+                 "width": 1281,
+                 "height": 834
+                }
+               },
+               {
+                "id": "104:147",
+                "name": "Group 23",
+                "type": "GROUP",
+                "absoluteBoundingBox": {
+                 "x": -1263,
+                 "y": 2379,
+                 "width": 651,
+                 "height": 28
+                }
+               },
+               {
+                "id": "114:245",
+                "name": "Trusted remedies, thoughtfully crafted and loved by our community.",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                 "x": -1240,
+                 "y": 2309,
+                 "width": 604,
+                 "height": 50
+                },
+                "characters": "Trusted remedies, thoughtfully crafted and loved by our community.",
+                "style": {
+                 "fontSize": 16,
+                 "fontWeight": 400
+                }
+               },
+               {
+                "id": "47:182",
+                "name": "Customer Favorites, Naturally",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                 "x": -1327,
+                 "y": 2244,
+                 "width": 780,
+                 "height": 62
+                },
+                "characters": "Customer Favorites, Naturally",
+                "style": {
+                 "fontSize": 52,
+                 "fontWeight": 400
+                }
+               }
+              ]
              },
              {
               "id": "140:481",
@@ -846,7 +1227,36 @@
                "y": 2182,
                "width": 274,
                "height": 52
-              }
+              },
+              "children": [
+               {
+                "id": "140:484",
+                "name": "Group",
+                "type": "GROUP",
+                "absoluteBoundingBox": {
+                 "x": -1079.9250183105469,
+                 "y": 2184.9998090640943,
+                 "width": 263.85001003368313,
+                 "height": 45.00019093590572
+                }
+               },
+               {
+                "id": "140:490",
+                "name": "Featured Products",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                 "x": -1042,
+                 "y": 2205,
+                 "width": 186,
+                 "height": 19
+                },
+                "characters": "Featured Products",
+                "style": {
+                 "fontSize": 20,
+                 "fontWeight": 400
+                }
+               }
+              ]
              }
             ]
            }
@@ -931,7 +1341,36 @@
                "y": 1360,
                "width": 145,
                "height": 32
-              }
+              },
+              "children": [
+               {
+                "id": "118:230",
+                "name": "Rectangle 1",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                 "x": -1577,
+                 "y": 1360,
+                 "width": 145,
+                 "height": 32
+                }
+               },
+               {
+                "id": "118:231",
+                "name": "Find your remedy",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                 "x": -1563,
+                 "y": 1368,
+                 "width": 117,
+                 "height": 17
+                },
+                "characters": "Find your remedy",
+                "style": {
+                 "fontSize": 14,
+                 "fontWeight": 400
+                }
+               }
+              ]
              },
              {
               "id": "64:352",
@@ -943,7 +1382,11 @@
                "width": 584,
                "height": 63.53559875488281
               },
-              "characters": "Sleep & Rest"
+              "characters": "Sleep & Rest",
+              "style": {
+               "fontSize": 38,
+               "fontWeight": 400
+              }
              },
              {
               "id": "64:353",
@@ -1026,7 +1469,36 @@
                "y": 1360,
                "width": 149,
                "height": 32
-              }
+              },
+              "children": [
+               {
+                "id": "118:234",
+                "name": "Rectangle 1",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                 "x": -1005,
+                 "y": 1360,
+                 "width": 149,
+                 "height": 32
+                }
+               },
+               {
+                "id": "118:235",
+                "name": "Find your remedy",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                 "x": -991,
+                 "y": 1368,
+                 "width": 122,
+                 "height": 17
+                },
+                "characters": "Find your remedy",
+                "style": {
+                 "fontSize": 14,
+                 "fontWeight": 400
+                }
+               }
+              ]
              },
              {
               "id": "64:359",
@@ -1038,7 +1510,11 @@
                "width": 566.3651123046875,
                "height": 63.53559875488281
               },
-              "characters": "Stress & Calm"
+              "characters": "Stress & Calm",
+              "style": {
+               "fontSize": 38,
+               "fontWeight": 400
+              }
              },
              {
               "id": "64:360",
@@ -1122,7 +1598,11 @@
                "width": 567.2299194335938,
                "height": 63.53559875488281
               },
-              "characters": "Digestion"
+              "characters": "Digestion",
+              "style": {
+               "fontSize": 38,
+               "fontWeight": 400
+              }
              },
              {
               "id": "64:367",
@@ -1206,7 +1686,11 @@
                "width": 584,
                "height": 63.53559875488281
               },
-              "characters": "Energy"
+              "characters": "Energy",
+              "style": {
+               "fontSize": 38,
+               "fontWeight": 400
+              }
              },
              {
               "id": "64:374",
@@ -1290,7 +1774,11 @@
                "width": 568.8667602539062,
                "height": 63.764556884765625
               },
-              "characters": "Immune Support"
+              "characters": "Immune Support",
+              "style": {
+               "fontSize": 38,
+               "fontWeight": 400
+              }
              },
              {
               "id": "64:381",
@@ -1374,7 +1862,11 @@
                "width": 567.2299194335938,
                "height": 63.53559875488281
               },
-              "characters": "Everyday Wellness"
+              "characters": "Everyday Wellness",
+              "style": {
+               "fontSize": 38,
+               "fontWeight": 400
+              }
              },
              {
               "id": "64:388",
@@ -1406,7 +1898,7 @@
         "children": [
          {
           "id": "18:59",
-          "name": "Screenshot 2026-09-15 at 7.44.05\u202fPM 1",
+          "name": "Screenshot 2026-09-15 at 7.44.05 PM 1",
           "type": "RECTANGLE",
           "absoluteBoundingBox": {
            "x": -1801,
@@ -1417,7 +1909,7 @@
          },
          {
           "id": "21:61",
-          "name": "Screenshot 2026-09-14 at 9.48.58\u202fPM 1",
+          "name": "Screenshot 2026-09-14 at 9.48.58 PM 1",
           "type": "RECTANGLE",
           "absoluteBoundingBox": {
            "x": -1802,
@@ -1469,7 +1961,11 @@
                "width": 984,
                "height": 99
               },
-              "characters": "Wellness, rooted in nature"
+              "characters": "Wellness, rooted in nature",
+              "style": {
+               "fontSize": 68,
+               "fontWeight": 400
+              }
              },
              {
               "id": "41:132",
@@ -1480,7 +1976,36 @@
                "y": 596.6831665039062,
                "width": 191,
                "height": 50.31683349609375
-              }
+              },
+              "children": [
+               {
+                "id": "41:133",
+                "name": "Rectangle 1",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                 "x": -1567,
+                 "y": 596.6831665039062,
+                 "width": 191,
+                 "height": 50.31683349609375
+                }
+               },
+               {
+                "id": "41:134",
+                "name": "Watch video",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                 "x": -1553,
+                 "y": 611,
+                 "width": 163,
+                 "height": 22
+                },
+                "characters": "Watch video ",
+                "style": {
+                 "fontSize": 18,
+                 "fontWeight": 400
+                }
+               }
+              ]
              },
              {
               "id": "41:136",
@@ -1492,7 +2017,11 @@
                "width": 787,
                "height": 49.17326736450195
               },
-              "characters": "Thoughtfully crafted herbal remedies for everyday wellness, made with plants you can understand and trust."
+              "characters": "Thoughtfully crafted herbal remedies for everyday wellness, made with plants you can understand and trust.",
+              "style": {
+               "fontSize": 20,
+               "fontWeight": 400
+              }
              }
             ]
            }
@@ -1530,7 +2059,11 @@
                "width": 231,
                "height": 16
               },
-              "characters": "Shop    Herbs    Journal    Our story"
+              "characters": "Shop    Herbs    Journal    Our story",
+              "style": {
+               "fontSize": 14,
+               "fontWeight": 400
+              }
              },
              {
               "id": "18:45",
@@ -1541,7 +2074,20 @@
                "y": 44,
                "width": 264,
                "height": 24
-              }
+              },
+              "children": [
+               {
+                "id": "18:46",
+                "name": "logo",
+                "type": "GROUP",
+                "absoluteBoundingBox": {
+                 "x": -1033.5,
+                 "y": 43.934932708740234,
+                 "width": 264,
+                 "height": 23.90596580505371
+                }
+               }
+              ]
              },
              {
               "id": "32:15",
@@ -1552,7 +2098,36 @@
                "y": 40,
                "width": 158,
                "height": 32
-              }
+              },
+              "children": [
+               {
+                "id": "32:16",
+                "name": "Rectangle 1",
+                "type": "RECTANGLE",
+                "absoluteBoundingBox": {
+                 "x": -263.5,
+                 "y": 40,
+                 "width": 158,
+                 "height": 32
+                }
+               },
+               {
+                "id": "32:17",
+                "name": "Find Your Remedy",
+                "type": "TEXT",
+                "absoluteBoundingBox": {
+                 "x": -249.5,
+                 "y": 48,
+                 "width": 130,
+                 "height": 17
+                },
+                "characters": "Find Your Remedy",
+                "style": {
+                 "fontSize": 14,
+                 "fontWeight": 400
+                }
+               }
+              ]
              }
             ]
            }
@@ -1575,7 +2150,7 @@
       "children": [
        {
         "id": "37:100",
-        "name": "Screenshot 2026-09-15 at 7.44.05\u202fPM 1",
+        "name": "Screenshot 2026-09-15 at 7.44.05 PM 1",
         "type": "RECTANGLE",
         "absoluteBoundingBox": {
          "x": -3603,
@@ -1586,7 +2161,7 @@
        },
        {
         "id": "37:101",
-        "name": "Screenshot 2026-09-14 at 9.48.58\u202fPM 1",
+        "name": "Screenshot 2026-09-14 at 9.48.58 PM 1",
         "type": "RECTANGLE",
         "absoluteBoundingBox": {
          "x": -3604,
@@ -1859,7 +2434,20 @@
                "y": 335,
                "width": 32,
                "height": 32
-              }
+              },
+              "children": [
+               {
+                "id": "86:84",
+                "name": "Vector",
+                "type": "VECTOR",
+                "absoluteBoundingBox": {
+                 "x": -2175,
+                 "y": 338,
+                 "width": 26.0000057220459,
+                 "height": 26.0000057220459
+                }
+               }
+              ]
              },
              {
               "id": "86:80",
@@ -1870,7 +2458,20 @@
                "y": 262,
                "width": 895,
                "height": 179
-              }
+              },
+              "children": [
+               {
+                "id": "86:79",
+                "name": "Group 14",
+                "type": "GROUP",
+                "absoluteBoundingBox": {
+                 "x": -2739,
+                 "y": 261.9997863769531,
+                 "width": 607,
+                 "height": 179
+                }
+               }
+              ]
              },
              {
               "id": "86:81",
@@ -1881,7 +2482,20 @@
                "y": 335,
                "width": 32,
                "height": 32
-              }
+              },
+              "children": [
+               {
+                "id": "86:82",
+                "name": "Vector",
+                "type": "VECTOR",
+                "absoluteBoundingBox": {
+                 "x": -2692,
+                 "y": 338,
+                 "width": 26.0000057220459,
+                 "height": 26.0000057220459
+                }
+               }
+              ]
              }
             ]
            }
@@ -1908,11 +2522,15 @@
            "width": 164,
            "height": 22
           },
-          "characters": "Featured products"
+          "characters": "Featured products",
+          "style": {
+           "fontSize": 18,
+           "fontWeight": 400
+          }
          },
          {
           "id": "76:392",
-          "name": "Sleep & Rest\u2028 Stress & Calm\u2028 Digestion Energy & Vitality\u2028 Immune Support\u2028 Everyday Wellness\u2028 Focus & Clarity",
+          "name": "Sleep & Rest  Stress & Calm  Digestion Energy & Vitality  Immune Support  Everyday Wellness  Focus & Clarity",
           "type": "TEXT",
           "absoluteBoundingBox": {
            "x": -3338,
@@ -1920,11 +2538,15 @@
            "width": 106,
            "height": 182
           },
-          "characters": "Sleep & Rest\u2028\nStress & Calm\u2028\nDigestion\n\nEnergy & Vitality\u2028\nImmune Support\u2028\nEveryday Wellness\u2028\nFocus & Clarity"
+          "characters": "Sleep & Rest \nStress & Calm \nDigestion\n\nEnergy & Vitality \nImmune Support \nEveryday Wellness \nFocus & Clarity",
+          "style": {
+           "fontSize": 12,
+           "fontWeight": 400
+          }
          },
          {
           "id": "79:2",
-          "name": "Mood Supports\u2028\u2028Women\u2019s Wellness Men\u2019s Wellness\u2028 Seasonal Wellness\u2028 Respiratory Support\u2028 Joint & Mobility Support \u2028Skin & Beauty\u2028 Heart & Circulation",
+          "name": "Mood Supports  Women’s Wellness Men’s Wellness  Seasonal Wellness  Respiratory Support  Joint & Mobility Support  Skin & Beauty  Heart & Circulation",
           "type": "TEXT",
           "absoluteBoundingBox": {
            "x": -3159,
@@ -1932,11 +2554,15 @@
            "width": 139,
            "height": 210
           },
-          "characters": "Mood Supports\u2028\u2028Women\u2019s Wellness\n\nMen\u2019s Wellness\u2028\nSeasonal Wellness\u2028\nRespiratory Support\u2028\nJoint & Mobility Support\n\u2028Skin & Beauty\u2028\nHeart & Circulation"
+          "characters": "Mood Supports  Women’s Wellness\n\nMen’s Wellness \nSeasonal Wellness \nRespiratory Support \nJoint & Mobility Support\n Skin & Beauty \nHeart & Circulation",
+          "style": {
+           "fontSize": 12,
+           "fontWeight": 400
+          }
          },
          {
           "id": "79:3",
-          "name": "Detox & Cleansing\u2028\u2028Hormonal Balance\u2028 Healthy Aging\u2028 Recovery & Restoration\u2028 Daily Rituals",
+          "name": "Detox & Cleansing  Hormonal Balance  Healthy Aging  Recovery & Restoration  Daily Rituals",
           "type": "TEXT",
           "absoluteBoundingBox": {
            "x": -2980,
@@ -1944,7 +2570,11 @@
            "width": 135,
            "height": 126
           },
-          "characters": "Detox & Cleansing\u2028\u2028Hormonal Balance\u2028\nHealthy Aging\u2028\nRecovery & Restoration\u2028\nDaily Rituals"
+          "characters": "Detox & Cleansing  Hormonal Balance \nHealthy Aging \nRecovery & Restoration \nDaily Rituals",
+          "style": {
+           "fontSize": 12,
+           "fontWeight": 400
+          }
          },
          {
           "id": "61:259",
@@ -1978,7 +2608,11 @@
            "width": 95,
            "height": 15
           },
-          "characters": "Shop by Need"
+          "characters": "Shop by Need",
+          "style": {
+           "fontSize": 14,
+           "fontWeight": 400
+          }
          },
          {
           "id": "61:265",
@@ -1990,7 +2624,11 @@
            "width": 123,
            "height": 15
           },
-          "characters": "Shop by Category"
+          "characters": "Shop by Category",
+          "style": {
+           "fontSize": 14,
+           "fontWeight": 400
+          }
          },
          {
           "id": "73:391",
@@ -2002,7 +2640,11 @@
            "width": 131,
            "height": 15
           },
-          "characters": "Shop by Ingredient"
+          "characters": "Shop by Ingredient",
+          "style": {
+           "fontSize": 14,
+           "fontWeight": 400
+          }
          }
         ]
        },
@@ -2084,7 +2726,11 @@
                "width": 584,
                "height": 63.53559875488281
               },
-              "characters": "Sleep & Rest"
+              "characters": "Sleep & Rest",
+              "style": {
+               "fontSize": 38,
+               "fontWeight": 400
+              }
              },
              {
               "id": "114:208",
@@ -2168,7 +2814,11 @@
                "width": 566.3651123046875,
                "height": 63.53559875488281
               },
-              "characters": "Stress & Calm"
+              "characters": "Stress & Calm",
+              "style": {
+               "fontSize": 38,
+               "fontWeight": 400
+              }
              },
              {
               "id": "114:215",
@@ -2252,7 +2902,11 @@
                "width": 567.2299194335938,
                "height": 63.53559875488281
               },
-              "characters": "Digestion"
+              "characters": "Digestion",
+              "style": {
+               "fontSize": 38,
+               "fontWeight": 400
+              }
              },
              {
               "id": "114:222",
@@ -2336,7 +2990,11 @@
                "width": 584,
                "height": 63.53559875488281
               },
-              "characters": "Energy"
+              "characters": "Energy",
+              "style": {
+               "fontSize": 38,
+               "fontWeight": 400
+              }
              },
              {
               "id": "114:229",
@@ -2420,7 +3078,11 @@
                "width": 568.8667602539062,
                "height": 63.764556884765625
               },
-              "characters": "Immune Support"
+              "characters": "Immune Support",
+              "style": {
+               "fontSize": 38,
+               "fontWeight": 400
+              }
              },
              {
               "id": "114:236",
@@ -2504,7 +3166,11 @@
                "width": 567.2299194335938,
                "height": 63.53559875488281
               },
-              "characters": "Everyday Wellness"
+              "characters": "Everyday Wellness",
+              "style": {
+               "fontSize": 38,
+               "fontWeight": 400
+              }
              },
              {
               "id": "114:243",
@@ -2555,7 +3221,11 @@
              "width": 230,
              "height": 16
             },
-            "characters": "Shop    Herbs    Journal    Our Story"
+            "characters": "Shop    Herbs    Journal    Our Story",
+            "style": {
+             "fontSize": 14,
+             "fontWeight": 400
+            }
            },
            {
             "id": "37:106",
@@ -2600,7 +3270,11 @@
                "width": 107,
                "height": 17
               },
-              "characters": "Find Your Remedy"
+              "characters": "Find Your Remedy",
+              "style": {
+               "fontSize": 12,
+               "fontWeight": 400
+              }
              }
             ]
            }
@@ -2911,7 +3585,20 @@
                "y": -202,
                "width": 32,
                "height": 32
-              }
+              },
+              "children": [
+               {
+                "id": "204:83",
+                "name": "Vector",
+                "type": "VECTOR",
+                "absoluteBoundingBox": {
+                 "x": 10599,
+                 "y": -199,
+                 "width": 26.0000057220459,
+                 "height": 26.0000057220459
+                }
+               }
+              ]
              },
              {
               "id": "204:84",
@@ -2922,7 +3609,20 @@
                "y": -202,
                "width": 32,
                "height": 32
-              }
+              },
+              "children": [
+               {
+                "id": "204:85",
+                "name": "Vector",
+                "type": "VECTOR",
+                "absoluteBoundingBox": {
+                 "x": 10166,
+                 "y": -199,
+                 "width": 26.0000057220459,
+                 "height": 26.0000057220459
+                }
+               }
+              ]
              }
             ]
            },
@@ -3065,7 +3765,11 @@
          "width": 186,
          "height": 19
         },
-        "characters": "Shop by Category"
+        "characters": "Shop by Category",
+        "style": {
+         "fontSize": 20,
+         "fontWeight": 400
+        }
        }
       ]
      },
@@ -3101,7 +3805,11 @@
          "width": 186,
          "height": 19
         },
-        "characters": "Shop by Category"
+        "characters": "Shop by Category",
+        "style": {
+         "fontSize": 20,
+         "fontWeight": 400
+        }
        }
       ]
      },
@@ -3137,7 +3845,11 @@
          "width": 186,
          "height": 19
         },
-        "characters": "Shop by Category"
+        "characters": "Shop by Category",
+        "style": {
+         "fontSize": 20,
+         "fontWeight": 400
+        }
        }
       ]
      },
@@ -3173,7 +3885,11 @@
          "width": 186,
          "height": 19
         },
-        "characters": "Shop by Category"
+        "characters": "Shop by Category",
+        "style": {
+         "fontSize": 20,
+         "fontWeight": 400
+        }
        }
       ]
      }
