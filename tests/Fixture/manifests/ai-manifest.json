@@ -1,0 +1,22 @@
+{
+  "envelope": "1.0.0",
+  "schema_index": {
+    "block": {
+      "card": {
+        "path": "card/card.schema.json",
+        "tier": "fixture-tier",
+        "properties": 5,
+        "content_hash": "abc123def456",
+        "shape": "storage"
+      },
+      "missing": {
+        "path": "missing/missing.schema.json",
+        "tier": "no-such-tier",
+        "properties": 0,
+        "content_hash": "deadbeef",
+        "shape": "storage"
+      }
+    },
+    "pattern": {}
+  }
+}

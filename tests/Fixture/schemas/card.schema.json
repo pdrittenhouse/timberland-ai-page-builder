@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Card",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "show_ids"
+  ],
+  "x-tl-shape": "storage",
+  "x-tl-content-hash": "abc123def456",
+  "properties": {
+    "show_ids": {
+      "type": "boolean",
+      "x-tl-acf-type": "true_false"
+    },
+    "card_title": {
+      "type": "string",
+      "x-tl-acf-key": "field_aaa111"
+    },
+    "card_body": {
+      "type": "string",
+      "x-tl-acf-key": "field_bbb222"
+    },
+    "card_layout": {
+      "type": "string",
+      "enum": [
+        "vertical",
+        "horizontal",
+        "overlay"
+      ]
+    },
+    "card_columns": {
+      "type": "integer"
+    }
+  }
+}

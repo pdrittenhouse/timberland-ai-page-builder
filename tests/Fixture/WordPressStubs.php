@@ -47,6 +47,26 @@ trait WordPressStubs {
         );
     }
 
+    /**
+     * The theme-location functions `SchemaOracle::locate()` uses to find a tier root.
+     *
+     * Pointed at a fixture directory rather than a real theme. `locate()` derives candidate
+     * roots from the tier NAME the build recorded and checks each against the filesystem, so a
+     * test for "this tier does not exist here" needs the lookup to actually run and find
+     * nothing — stubbing it to return a canned answer would skip the logic under test.
+     */
+    protected function stubThemeDirs( ?string $template = null, ?string $stylesheet = null ): void {
+        $template = $template ?? dirname( __DIR__ ) . '/Fixture/theme';
+        $stylesheet = $stylesheet ?? $template;
+
+        Functions\when( 'get_template_directory' )->justReturn( $template );
+        Functions\when( 'get_stylesheet_directory' )->justReturn( $stylesheet );
+
+        if ( ! defined( 'WP_PLUGIN_DIR' ) ) {
+            define( 'WP_PLUGIN_DIR', dirname( __DIR__ ) . '/Fixture/plugins' );
+        }
+    }
+
     protected function unstubWordPress(): void {
         Monkey\tearDown();
     }
