@@ -1,0 +1,119 @@
+<?php
+
+namespace TimberlandAIPageBuilder;
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+/**
+ * What an operator is shown before a Figma design becomes blocks.
+ *
+ * **This exists because the review step already existed.** `/structure` contracts to build "from a
+ * confirmed layout plan", so the Figma path's job is to produce a plan worth confirming -- not to
+ * grow a second flow with its own confirmation. A separate Figma pipeline would have been the one
+ * path where nobody checks the plan, and it is the path where checking matters most: the operator
+ * can see their own file and the model cannot.
+ *
+ * **Everything in one response, deliberately.** The obvious design is "list the candidates, then
+ * fetch the one the operator picked", and it is wrong twice over. The file is one metered,
+ * rate-limited, multi-megabyte fetch, so a second request either pays for it again or needs a cache
+ * of a 3.9 MB payload to invalidate. And the operator *will* switch pages -- that is what reviewing
+ * is -- so the second request is the common case, not the exception. Deriving every candidate's
+ * decomposition from the single fetched tree costs local CPU and ~36 KB of JSON, and makes page
+ * switching free and stateless.
+ *
+ * **Depth is reported, never silently chosen.** `FigmaStructure::pages()` descends, and how far
+ * down the page designs sit is a property of the file. The deeper levels surface frame/child pairs
+ * carrying the same text -- harmless for a model choosing semantically, but an operator shown two
+ * rows both reading "Our Roots. Our Reason. Our Future." will reasonably conclude the tool is
+ * broken. So each candidate reports its own `depth` and `parent`, the caller renders the nesting
+ * rather than being handed a flat list that hides it, and `truncated` is returned so a caller can
+ * tell "that is the whole file" from "there are more I did not show you". See
+ * {@see DEFAULT_DEPTH} for why the default is the top level only.
+ */
+class FigmaReview
+{
+    /**
+     * Zero -- the top level only -- and deliberately NOT `pages()`'s own default of 2.
+     *
+     * This started as 2, reasoned from "the review route and the model-facing tool should not
+     * drift apart". Measured against one real file, that reasoning was simply wrong:
+     *
+     * | depth | candidates | truncated | named |
+     * |-------|-----------:|----------:|------:|
+     * |   0   |         17 |         0 |    13 |
+     * |   1   |         40 |        33 |    10 |
+     * |   2   |         40 |       121 |    10 |
+     *
+     * Descending gives an operator **more rows and fewer names**, because the 40-candidate cap
+     * then evicts the named top-level frames in favour of their own children. At depth 0 the list
+     * opens with the seven real page frames; at depth 1, thirty-three candidates are not listed at
+     * all, and nothing guarantees the operator's page is among the forty that survive. A review
+     * list that can silently omit the thing being reviewed is worse than a short one.
+     *
+     * The model-facing {@see FigmaContextTool} keeps 2 on purpose. It chooses semantically from
+     * evidence and benefits from seeing nested candidates; an operator is scanning for the frame
+     * they already recognise. Different audiences, so the divergence is the point rather than
+     * drift -- and a caller who wants the deeper view can still ask for it.
+     */
+    public const DEFAULT_DEPTH = 0;
+
+    /** A file can legitimately nest designs, but a deep scan is a lot of fruitless recursion. */
+    public const MAX_DEPTH = 4;
+
+    /**
+     * Candidate page designs in the linked node, each with the plan it would produce.
+     *
+     * @return array{
+     *     file: string,
+     *     node: string,
+     *     source: string,
+     *     depth: int,
+     *     skipped: int,
+     *     truncated: int,
+     *     candidates: array<int, array<string, mixed>>
+     * }|\WP_Error
+     */
+    public static function inspect(FigmaUrl $ref, int $depth = self::DEFAULT_DEPTH, ?FigmaClient $client = null)
+    {
+        $depth = max(0, min(self::MAX_DEPTH, $depth));
+        $client = $client ?? new FigmaClient();
+
+        $payload = $client->fetch_node($ref);
+
+        if (is_wp_error($payload)) {
+            return $payload;
+        }
+
+        $found = FigmaStructure::pages($payload, $depth);
+        $candidates = [];
+
+        foreach ($found['pages'] as $page) {
+            $bands = FigmaStructure::bands($payload, $page['id']);
+
+            if (is_wp_error($bands)) {
+                // `pages()` just told us this id exists, so this is unreachable in practice. Skip
+                // rather than fail the whole inspection: one unreadable candidate must not cost the
+                // operator the other thirty-seven.
+                continue;
+            }
+
+            $candidates[] = $page + [
+                'decomposition' => FigmaDecomposer::from_page($bands, $ref->file_key()),
+            ];
+        }
+
+        return [
+            'file' => $ref->file_key(),
+            'node' => $ref->node_id(),
+            'source' => $found['source'],
+            // Echoed back because it was clamped, and because a caller that asked for 9 and got 4
+            // should be able to see that rather than wonder why the list looks shallow.
+            'depth' => $depth,
+            'skipped' => $found['skipped'],
+            'truncated' => $found['truncated'],
+            'candidates' => $candidates,
+        ];
+    }
+}

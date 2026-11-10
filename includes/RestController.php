@@ -194,6 +194,34 @@ class RestController
             ],
         ]);
 
+        register_rest_route(self::NAMESPACE, '/figma/inspect', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_figma_inspect'],
+            'permission_callback' => [$this, 'can_edit'],
+            'args' => [
+                'url' => [
+                    'required' => true,
+                    'type' => 'string',
+                    // Deliberately NOT esc_url_raw: FigmaUrl::parse() enforces the host
+                    // allowlist, and a sanitiser that quietly repairs a malformed URL would hand
+                    // parse() something the operator never typed.
+                    //
+                    // Wrapped rather than passed as `'trim'`, because REST hands a sanitiser THREE
+                    // arguments ($value, $request, $param) and `trim()` accepts two -- which is an
+                    // ArgumentCountError, i.e. a fatal on every single request to this route. It
+                    // read as "critical error on this website" with the real work untouched and
+                    // passing.
+                    'sanitize_callback' => static fn($value): string => trim((string) $value),
+                ],
+                'depth' => [
+                    'required' => false,
+                    'type' => 'integer',
+                    'default' => FigmaReview::DEFAULT_DEPTH,
+                    'sanitize_callback' => 'absint',
+                ],
+            ],
+        ]);
+
         register_rest_route(self::NAMESPACE, '/generate-context', [
             'methods' => 'POST',
             'callback' => [$this, 'handle_generate_context'],
@@ -715,6 +743,57 @@ class RestController
                 'error' => $e->getMessage(),
             ], 200);
         }
+    }
+
+    /**
+     * POST /figma/inspect — Candidate page designs in a Figma link, each with the plan it yields.
+     *
+     * Step 1 of the Figma path, and it ends where the prompt path's step 1 ends: at a
+     * `decomposition` the operator confirms before `/structure`. There is no Figma-specific
+     * confirmation, because there must not be two.
+     *
+     * One outbound fetch. See {@see FigmaReview} for why every candidate is derived at once rather
+     * than on demand.
+     */
+    public function handle_figma_inspect(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
+    {
+        if (!FigmaCredentials::is_configured()) {
+            return new \WP_Error(
+                'taipb_figma_no_token',
+                'No Figma access token is configured. Add one in the AI Page Builder settings.',
+                ['status' => 400]
+            );
+        }
+
+        $ref = FigmaUrl::parse((string) $request->get_param('url'));
+
+        if (is_wp_error($ref)) {
+            // Surfaced as 400, not 500: a link to the wrong host or a file URL with no node is the
+            // operator's to fix, and the allowlist rejection in particular should read as a
+            // rejected input rather than as a server fault.
+            return new \WP_Error($ref->get_error_code(), $ref->get_error_message(), ['status' => 400]);
+        }
+
+        $result = FigmaReview::inspect($ref, (int) $request->get_param('depth'));
+
+        if (is_wp_error($result)) {
+            // Rate limiting is not a bad gateway. 429 is the one failure here the caller should
+            // retry unchanged, and the one the operator must not read as "my token died".
+            $code = $result->get_error_code();
+            $status = 'figma_rate_limited' === $code ? 429 : ('figma_forbidden' === $code ? 403 : 502);
+
+            return new \WP_Error(
+                $code,
+                Redact::credentials($result->get_error_message()),
+                ['status' => $status]
+            );
+        }
+
+        return new \WP_REST_Response($result + [
+            // The caller needs to tell "the file has no page designs" from "the link was fine and
+            // the fetch worked". Both are 200, and only one is worth retrying at another depth.
+            'has_candidates' => $result['candidates'] !== [],
+        ], 200);
     }
 
     /**
