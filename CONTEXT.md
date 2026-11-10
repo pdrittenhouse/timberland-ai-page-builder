@@ -114,3 +114,52 @@ specifies for which no design token exists.
 A deviation is "a labelled, reviewable open question, never a raw hex sitting in the CSS". The
 slot exists in the schema before Figma work begins, so filling it later is a value change rather
 than a schema migration.
+
+**approved** — every value traces to a node id, and there are no open deviations. Requires a
+`file` AND a `node` AND an empty `deviations[]`.
+
+**custom** — anything else. Not a criticism: a hand-built variant with no Figma source is a
+legitimate component, and most of the library is one. It is a *description of what can be
+checked*, not a quality judgement.
+
+`status` is **derived, never authored**. A hand-written `approved` is exactly the claim this
+exists to make checkable, so writing one by hand would defeat the purpose.
+
+**Provenance is a label, never a gate.** Nothing in the pipeline may refuse to render a component
+because its status is `custom` or because it carries deviations. A gate would make people omit
+the section, and an omitted section is indistinguishable from an untraced component — which is
+the state this is meant to end.
+
+### The three rules
+
+1. **Values are pulled by node id, never eyeballed.** A colour read off a screenshot is not
+   provenance.
+2. **A raw literal is acceptable only when it is Figma-exact and its node id is recorded
+   alongside.** The literal is not the problem; an unattributed literal is.
+3. **Anything a design specifies for which no token exists becomes a flagged deviation** — named
+   in `deviations[]`, not quietly shipped as a hex.
+
+### Authoring it
+
+`provenance()` in `block-metadata.mjs` reads a `## Design Provenance` section from the
+component's `.md`, so it lives beside the prose it describes and travels with the component —
+the same reasoning as `best_for`. A structured copy anywhere else is the drift this workstream
+exists to prevent.
+
+```markdown
+## Design Provenance
+
+- file: aBcDeFgHiJkL
+- node: 2503-3665
+- node_mobile: 2503:3700
+- deviation: card shadow has no token; Figma specifies 0 2px 8px rgba(0,0,0,.08)
+```
+
+Node ids are accepted in either spelling and recorded in the API's colon form — a share URL gives
+`2503-3665`, the API wants `2503:3665`, and a reviewer should be able to paste either.
+
+**Absent section means `status: custom` with no file or node**, emitted anyway. Writing the key
+only when present would make "no Figma source" and "nobody filled this in" indistinguishable.
+
+**Current state: 41/41 blocks are `custom`, 0 deviations recorded** — nothing has been traced to
+Figma yet, which is the honest baseline this measures from.
