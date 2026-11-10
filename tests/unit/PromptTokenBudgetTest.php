@@ -231,6 +231,41 @@ final class PromptTokenBudgetTest extends TestCase {
         $this->assertLessThanOrEqual( self::BUDGET_CEILING, $this->estimateTokens( $prompt ) );
     }
 
+    public function test_a_long_operator_custom_prompt_does_not_blow_the_budget(): void {
+        // Found only after activating on a configured site: natural-rose's
+        // `custom_system_prompt` is 6,107 characters of site-analysis prose (~1,526 tokens),
+        // appended as SITE-SPECIFIC INSTRUCTIONS and previously unbudgeted. It took an
+        // otherwise-compliant prompt to 8,024. The option was empty in every probe-harness
+        // measurement, so no amount of measuring the code found it -- only running it where it
+        // was configured did.
+        //
+        // Operator input has no upper bound, so the blocks section is now sized from what is
+        // LEFT of the allowance rather than from a fixed number.
+        $this->unstubWordPress();
+        $this->stubWordPress( array( 'custom_system_prompt' => str_repeat( 'Site context sentence. ', 400 ) ) );
+
+        $tokens = $this->tokensFor( $this->manifestWithRelevantBlocks( 45 ) );
+
+        $this->assertLessThanOrEqual(
+            self::BUDGET_CEILING,
+            $tokens,
+            "A 9,200-character operator prompt produced $tokens tokens. The blocks section must "
+            . 'give way to operator input, not add to it.'
+        );
+    }
+
+    public function test_blocks_are_never_squeezed_out_entirely(): void {
+        // The other direction. An operator can write more than the whole allowance, and the
+        // answer is not a prompt that describes no blocks -- it is a knowingly-exceeded budget
+        // attributable to the setting that caused it.
+        $this->unstubWordPress();
+        $this->stubWordPress( array( 'custom_system_prompt' => str_repeat( 'Very long. ', 4000 ) ) );
+
+        $prompt = ( new PromptBuilder( ManifestFixture::manifest() ) )->build( 'a card', 'page' );
+
+        $this->assertStringContainsString( '`acf/card`', $prompt );
+    }
+
     public function test_irrelevant_blocks_are_free(): void {
         // The claim in PromptBuilder's docblock, asserted: 45 blocks the request has nothing to
         // do with must cost exactly nothing, not merely less.

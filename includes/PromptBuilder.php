@@ -50,6 +50,29 @@ class PromptBuilder
     ];
 
     /**
+     * The whole allowance for component context, from the cost model: 3,000-8,000 tokens.
+     *
+     * Every other ceiling here is derived from this one at runtime rather than fixed, because
+     * fixed per-section numbers cannot add up when one of the sections is operator input.
+     * Measured on natural-rose after activation: the site's `custom_system_prompt` is 6,107
+     * characters (~1,533 tokens) of site-analysis prose, appended as SITE-SPECIFIC INSTRUCTIONS
+     * and previously unbudgeted, which took an otherwise-compliant prompt to 8,024. The option
+     * was empty every time this was measured through a probe harness, so the gap only appeared
+     * once the plugin ran through its own bootstrap on a configured site.
+     */
+    private const PROMPT_TOKEN_BUDGET = 8000;
+
+    /**
+     * The least the AVAILABLE BLOCKS section may be squeezed to.
+     *
+     * Blocks are the contract the model must satisfy. If an operator writes enough custom
+     * instruction to squeeze them below this, the budget is knowingly exceeded rather than
+     * shipping a prompt that cannot describe a single block -- the overage is then attributable
+     * to the setting that caused it.
+     */
+    private const BLOCKS_SECTION_TOKEN_FLOOR = 2500;
+
+    /**
      * Token ceiling for the REFERENCE PATTERNS section.
      *
      * These are few-shot examples: a saved editor pattern's FULL markup, and a saved pattern can
@@ -62,30 +85,6 @@ class PromptBuilder
      * rules. When something has to give, the example gives.
      */
     private const PATTERNS_SECTION_TOKEN_BUDGET = 1100;
-
-    /**
-     * Token ceiling for the AVAILABLE BLOCKS section.
-     *
-     * A COUNT cap cannot guarantee a budget when per-block cost varies by an order of
-     * magnitude: measured on updater-starter, ten blocks under the count cap still reached
-     * ~9,800 tokens, while the same cap on natural-rose produced ~6,400. The section is
-     * therefore filled in relevance order until this is reached, and what did not fit is
-     * reported in the prompt rather than silently dropped.
-     *
-     * Sized by arithmetic against the measured fixed cost, not chosen. The sections that do not
-     * vary with the request come to ~1,910 tokens (RULES 1,550, nesting ~320, post-type ~40),
-     * which leaves ~6,090 of the 8,000 allowance; ~290 goes on section separators and the
-     * dropped-block notice, so ~5,800 is divisible between blocks and patterns. 4,700 here plus
-     * 1,100 for patterns fits with headroom.
-     *
-     * The first attempt set these to 5,000 and 1,200, which SUMMED to more than the allowance --
-     * each section was individually compliant and the prompt was still 8,361 tokens on
-     * updater-starter. Per-section ceilings only work if they add up.
-     *
-     * Core blocks are exempt: without section/row/column the model cannot produce a valid layout
-     * at all, so dropping one to save tokens buys a cheaper broken page.
-     */
-    private const BLOCKS_SECTION_TOKEN_BUDGET = 4700;
 
     private const CORE_BLOCKS = [
         'acf/section',
@@ -121,25 +120,46 @@ class PromptBuilder
     {
         $relevant_blocks = $this->filter_blocks_for_prompt($user_prompt);
 
-        $sections = [];
+        // Everything whose size this class does not control is built and MEASURED first; the
+        // blocks section then gets whatever is left of the allowance. Build order is not output
+        // order -- the sections are reassembled below in the order the model should read them.
+        $rules = $this->build_rules_section();
+        $nesting = $this->build_nesting_section();
+        $post_type_section = $this->build_post_type_section($post_type);
 
-        $sections[] = $this->build_rules_section();
-        $sections[] = $this->build_blocks_section($relevant_blocks);
-        $sections[] = $this->build_nesting_section();
-        $sections[] = $this->build_post_type_section($post_type);
+        $pattern_sections = [];
 
-        // If specific patterns were selected, include them prominently
         if (!empty($use_patterns)) {
-            $sections[] = $this->build_selected_patterns_section($use_patterns);
+            $pattern_sections[] = $this->build_selected_patterns_section($use_patterns);
         } else {
-            $sections[] = $this->build_layouts_section($user_prompt);
-            $sections[] = $this->build_patterns_section($user_prompt);
+            $pattern_sections[] = $this->build_layouts_section($user_prompt);
+            $pattern_sections[] = $this->build_patterns_section($user_prompt);
         }
 
         $custom = $this->build_custom_prompt_section();
-        if ($custom) {
-            $sections[] = $custom;
+
+        $committed = $this->estimate_tokens($rules)
+            + $this->estimate_tokens($nesting)
+            + $this->estimate_tokens($post_type_section)
+            + $this->estimate_tokens($custom);
+
+        foreach ($pattern_sections as $section) {
+            $committed += $this->estimate_tokens($section);
         }
+
+        // Separators and the section's own heading, so the remainder is not optimistic.
+        $committed += 80;
+
+        $blocks_budget = max(
+            self::BLOCKS_SECTION_TOKEN_FLOOR,
+            self::PROMPT_TOKEN_BUDGET - $committed
+        );
+
+        $sections = array_merge(
+            [$rules, $this->build_blocks_section($relevant_blocks, $blocks_budget), $nesting, $post_type_section],
+            $pattern_sections,
+            $custom ? [$custom] : []
+        );
 
         return implode("\n\n---\n\n", array_filter($sections));
     }
@@ -147,6 +167,16 @@ class PromptBuilder
     /**
      * Build custom system prompt section from site settings.
      */
+    /**
+     * The framework's token estimator, `ceil(length / 4)`, so both sides of the stack count the
+     * same way -- `AiManifestPlugin` enforces the selection index's ceiling with the identical
+     * formula.
+     */
+    private function estimate_tokens(string $text): int
+    {
+        return (int) ceil(strlen($text) / 4);
+    }
+
     private function build_custom_prompt_section(): string
     {
         $custom = trim(Plugin::get_settings()['custom_system_prompt'] ?? '');
@@ -261,11 +291,30 @@ RULES;
      *
      * Field keys are deliberately omitted -- see the note at the field list below.
      */
-    private function build_blocks_section(array $blocks): string
+    private function build_blocks_section(array $blocks, int $budget): string
     {
         $output = "# AVAILABLE BLOCKS\n\n";
-        $spent = 0;
         $dropped = [];
+
+        // Reserve for the dropped-block notice BEFORE filling, at its worst case: every
+        // non-core candidate named. Measured at 132 tokens for 29 blocks on natural-rose, which
+        // is what pushed an otherwise-exact budget 48 over -- the notice was emitted after the
+        // ceiling had already been reached and was never counted against it. The worst case is
+        // computable here, so it is reserved rather than estimated.
+        $notice_reserve = 0;
+
+        foreach ($blocks as $name => $_) {
+            if (!in_array($name, self::CORE_BLOCKS, true)) {
+                $notice_reserve += (int) ceil((strlen($name) + 4) / 4);
+            }
+        }
+
+        if ($notice_reserve > 0) {
+            $notice_reserve += 16; // the sentence around the list
+        }
+
+        $budget = max(0, $budget - $notice_reserve);
+        $spent = 0;
 
         foreach ($blocks as $name => $block) {
             // Each block's text is built first and MEASURED before being appended. Testing
@@ -357,7 +406,7 @@ RULES;
 
             // Core blocks go in regardless: without section/row/column the model cannot produce
             // a valid layout, so dropping one to save tokens buys a cheaper broken page.
-            if (!$is_core && $spent + $cost > self::BLOCKS_SECTION_TOKEN_BUDGET) {
+            if (!$is_core && $spent + $cost > $budget) {
                 $dropped[] = $name;
                 continue;
             }
