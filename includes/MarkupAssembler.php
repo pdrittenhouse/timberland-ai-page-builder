@@ -214,6 +214,39 @@ class MarkupAssembler
             }
         }
 
+        // Step 2b: a repeater written as a JSON array becomes indexed rows.
+        //
+        // This path had NO repeater handling at all, so an array was copied through verbatim and
+        // ACF could not read it. Shared with MarkupGenerator rather than copied, because the two
+        // write paths having different ideas about stored shape is what produced post 7100.
+        $data = RepeaterRows::flatten($data, $type_map);
+
+        // Step 2c: companions for the row keys just created, and for any the caller supplied.
+        //
+        // The assembler writes companions from the key map further down, but only for names it
+        // finds there -- and a row key (`col_width_0_width`) is never in the map, which holds the
+        // un-indexed name (`col_width_width`). Without this the rows are present and unreadable.
+        foreach (array_keys($data) as $row_key) {
+            $row_key = (string) $row_key;
+
+            if (str_starts_with($row_key, '_') || !preg_match('/^(.+?)_(\d+)_(.+)$/', $row_key, $parts)) {
+                continue;
+            }
+
+            [, $parent, , $sub] = $parts;
+            $parent_type = $type_map[$parent] ?? '';
+
+            if ($parent_type !== 'repeater' && $parent_type !== 'flexible_content') {
+                continue;
+            }
+
+            $sub_key = $key_map[$parent . '_' . $sub] ?? null;
+
+            if ($sub_key !== null) {
+                $data['_' . $row_key] = $sub_key;
+            }
+        }
+
         // Step 3: Handle image field groups
         $image_groups = $this->detect_image_groups($type_map);
         foreach ($image_groups as $group) {

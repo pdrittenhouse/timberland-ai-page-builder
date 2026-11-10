@@ -14,6 +14,7 @@
          failOnWarning="true"
          failOnNotice="true"
          failOnDeprecation="true"
+         failOnRisky="true"
          beStrictAboutOutputDuringTests="true">
   <testsuites>
     <testsuite name="unit">

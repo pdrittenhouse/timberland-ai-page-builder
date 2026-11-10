@@ -22,6 +22,11 @@ if ( ! defined( 'TAIPB_VERSION' ) ) {
 	define( 'TAIPB_VERSION', 'test' );
 }
 
+// A minimal `WP_Error`, because the Figma layer returns one rather than throwing -- a REST
+// handler has to be able to show the person who pasted a URL why it was refused. Required after
+// the autoloader and before the assertion below, which guarantees it is not shadowing a real one.
+require_once __DIR__ . '/Fixture/WPErrorDouble.php';
+
 // Asserted, not assumed.
 if ( function_exists( 'add_action' ) ) {
 	fwrite( STDERR, "WordPress is loaded in the unit suite. These tests must run without it,\n"

@@ -225,9 +225,12 @@ anywhere. The server adds every companion key itself, from its own authoritative
 respond — anything you write there is discarded and replaced. Use ONLY the field names listed
 under each block in AVAILABLE BLOCKS; a name that is not listed will be rejected.
 
-A field name sharing a prefix with a listed one does NOT imply it exists. `hero-unit` lists
-`jumbotron_button_classes`, and that does not mean `jumbotron_title` is a field — it is not.
-Check the list; never extrapolate from a prefix.
+A field name sharing a prefix with a listed one does NOT imply it exists, and neither does the
+block's visual style. `hero-unit` renders a Bootstrap jumbotron and lists
+`hero_layout_jumbotron_layout`, but its content fields are plain: `title`, `subtitle`,
+`bg_image_bg_image`. There is no `jumbotron_title`, no `jumbotron_container`, no
+`jumbotron_fluid`. Never prefix a field name with a layout, style or block name — copy each name
+exactly as listed.
 
 ## CRITICAL: Yes/No Fields
 
@@ -352,85 +355,7 @@ RULES;
             // `$spent >= budget` on entry was the first attempt and let one oversized block
             // overshoot by however large it happened to be -- measured at 598 tokens over on
             // updater-starter. The cost has to be known before the decision, not after.
-            $entry = '';
-            $entry .= "## {$block['title']} (`{$name}`)\n";
-
-            if (!empty($block['description'])) {
-                $entry .= "{$block['description']}\n";
-            }
-
-            $entry .= "- Type: " . ($block['is_container'] ? 'container (jsx)' : 'leaf') . "\n";
-
-            if (!empty($block['keywords'])) {
-                $entry .= "- Keywords: " . implode(', ', $block['keywords']) . "\n";
-            }
-
-            if (!empty($block['parent'])) {
-                $entry .= "- Parent restriction: " . implode(', ', $block['parent']) . "\n";
-            }
-
-            if (!empty($block['usage_notes'])) {
-                $entry .= "- Usage notes: {$block['usage_notes']}\n";
-            }
-
-            // FIELD NAMES ONLY. The ACF keys are deliberately not here.
-            //
-            // `MarkupGenerator::post_process_markup()` step 3 and
-            // `MarkupAssembler::build_data_object()` step 4 both UNCONDITIONALLY overwrite every
-            // `_fieldname` companion from the manifest's key map -- the generator's own comment
-            // says why: "Claude may output wrong field keys that look valid. We always replace
-            // with the authoritative keys." So every key sent to the model was discarded and
-            // recomputed server-side.
-            //
-            // Measured on natural-rose's real 48-block manifest before this change: the
-            // `name => key` pairs were **97% of the entire per-block prompt cost** -- 10,060
-            // non-clone fields, ~143,000 tokens if every block were described, against a
-            // 3,000-8,000 token allowance for all component context. A single request for "a
-            // simple contact page" pulled 21 blocks and cost 48,313 tokens, almost all of it
-            // teaching the model values that were then thrown away.
-            //
-            // Clone-type fields stay skipped: they are internal ACF scaffolding (always empty
-            // strings) used to rebuild nested structures, and the post-processor handles them.
-            if (!empty($block['field_key_map'])) {
-                $type_map = $block['field_type_map'] ?? [];
-                $listed = 0;
-                $omitted = 0;
-                $lines = '';
-
-                foreach ($block['field_key_map'] as $field_name => $field_key) {
-                    $type = $type_map[$field_name] ?? '';
-
-                    if ($type === 'clone') {
-                        continue;
-                    }
-
-                    if (!in_array($type, self::CONTENT_FIELD_TYPES, true)) {
-                        $omitted++;
-                        continue;
-                    }
-
-                    $annotation = $this->get_image_annotation($field_name, $type_map);
-                    $lines .= "  {$field_name}{$annotation}\n";
-                    $listed++;
-                }
-
-                if ($listed > 0) {
-                    $entry .= "\nContent fields (give each a value in `data`; field keys are added for you):\n";
-                    $entry .= "```\n" . $lines . "```\n";
-                }
-
-                if ($omitted > 0) {
-                    // Say that they exist. Without this the model infers the listed set is
-                    // exhaustive and invents names for styling it wants to set -- which the
-                    // schema validator now rejects, turning a silent omission into a failed
-                    // generation. Telling it to leave them alone is cheaper than either.
-                    $entry .= "- {$omitted} further styling/layout fields exist (spacing, colour,"
-                        . " alignment, visibility). They are not listed: leave them unset and the"
-                        . " design system's defaults apply. Do NOT invent names for them.\n";
-                }
-            }
-
-            $entry .= "\n";
+            $entry = $this->render_block_entry($name, $block);
 
             $cost = intdiv(strlen($entry), 4);
             $is_core = in_array($name, self::CORE_BLOCKS, true);
@@ -456,6 +381,168 @@ RULES;
         }
 
         return $output;
+    }
+
+
+    /**
+     * The system prompt for a tool-driven generation: rules and a CATALOGUE, no field lists.
+     *
+     * The inline path guesses which blocks a request needs by keyword and then describes every
+     * field of each. Measured on "Add a hero with a headline": 9 blocks, 4,194 tokens, 69% of the
+     * prompt -- and 2,471 of those tokens described blocks the request could not use (`promo`,
+     * `jumbotron`, `table-head`, `table-cell`). The catalogue covers all 41 blocks for ~2,530
+     * tokens, and the model fetches field detail only for what it actually chooses.
+     *
+     * The catalogue is `best_for` / `avoid_when` per block -- the curation the framework already
+     * commits (UC1/UC2). It is what a block is FOR, which is what choosing needs; field names are
+     * what writing needs, and those arrive through the tool.
+     *
+     * Kept byte-identical across the turns of a generation so it can be sent as a cached prefix.
+     * Nothing request-specific belongs in here.
+     *
+     * @param array<string, array{best_for: string, avoid_when: string}> $catalogue
+     */
+    public function build_for_tools(string $post_type, array $catalogue): string
+    {
+        $prompt = $this->build_rules_section();
+        $prompt .= $this->build_post_type_section($post_type);
+        $prompt .= $this->build_nesting_section();
+        $prompt .= $this->build_custom_prompt_section();
+
+        $prompt .= "\n# BLOCK CATALOGUE\n\n";
+        $prompt .= "What each block is for. These are the ONLY blocks that exist.\n";
+        $prompt .= "You do not yet know their field names: call `" . BlockContextTool::NAME . "` with\n";
+        $prompt .= "every block you intend to use, in ONE call, before writing any markup.\n\n";
+
+        foreach ($catalogue as $slug => $entry) {
+            $prompt .= "- `{$slug}`";
+
+            if ($entry['best_for'] !== '') {
+                $prompt .= " — {$entry['best_for']}";
+            }
+
+            if ($entry['avoid_when'] !== '') {
+                $prompt .= " AVOID: {$entry['avoid_when']}";
+            }
+
+            $prompt .= "\n";
+        }
+
+        $prompt .= "\nIf the request needs something no block above can express, call `" . GapTool::NAME . "`\n";
+        $prompt .= "instead of substituting the nearest block, then carry on and build the parts that\n";
+        $prompt .= "ARE expressible. A gap reported beside a partial page is useful; a page that\n";
+        $prompt .= "silently approximates the request is not, and reporting one is never wrong.\n";
+
+        return $prompt;
+    }
+
+    /**
+     * Everything the model needs in order to WRITE one block, as prompt text.
+     *
+     * Extracted so the on-demand tool and the inline catalogue cannot drift. `BlockContextTool`
+     * serves exactly this text when the model asks for a block, and `build_blocks_section()`
+     * still uses it for the legacy inline path -- two callers, one definition of what a block
+     * looks like to a model.
+     *
+     * Returns '' for a block the manifest does not have, which the caller must treat as "do not
+     * offer this block", never as "a block with no fields".
+     */
+    public function describe_block(string $block_name): string
+    {
+        $block = $this->manifest['blocks'][$block_name] ?? null;
+
+        if (!is_array($block)) {
+            return '';
+        }
+
+        return $this->render_block_entry($block_name, $block);
+    }
+
+    /**
+     * @param array<string, mixed> $block
+     */
+    private function render_block_entry(string $name, array $block): string
+    {
+        $entry = '';
+        $entry .= "## {$block['title']} (`{$name}`)\n";
+
+        if (!empty($block['description'])) {
+            $entry .= "{$block['description']}\n";
+        }
+
+        $entry .= "- Type: " . ($block['is_container'] ? 'container (jsx)' : 'leaf') . "\n";
+
+        if (!empty($block['keywords'])) {
+            $entry .= "- Keywords: " . implode(', ', $block['keywords']) . "\n";
+        }
+
+        if (!empty($block['parent'])) {
+            $entry .= "- Parent restriction: " . implode(', ', $block['parent']) . "\n";
+        }
+
+        if (!empty($block['usage_notes'])) {
+            $entry .= "- Usage notes: {$block['usage_notes']}\n";
+        }
+
+        // FIELD NAMES ONLY. The ACF keys are deliberately not here.
+        //
+        // `MarkupGenerator::post_process_markup()` step 3 and
+        // `MarkupAssembler::build_data_object()` step 4 both UNCONDITIONALLY overwrite every
+        // `_fieldname` companion from the manifest's key map -- the generator's own comment
+        // says why: "Claude may output wrong field keys that look valid. We always replace
+        // with the authoritative keys." So every key sent to the model was discarded and
+        // recomputed server-side.
+        //
+        // Measured on natural-rose's real 48-block manifest before this change: the
+        // `name => key` pairs were **97% of the entire per-block prompt cost** -- 10,060
+        // non-clone fields, ~143,000 tokens if every block were described, against a
+        // 3,000-8,000 token allowance for all component context. A single request for "a
+        // simple contact page" pulled 21 blocks and cost 48,313 tokens, almost all of it
+        // teaching the model values that were then thrown away.
+        //
+        // Clone-type fields stay skipped: they are internal ACF scaffolding (always empty
+        // strings) used to rebuild nested structures, and the post-processor handles them.
+        if (!empty($block['field_key_map'])) {
+            $type_map = $block['field_type_map'] ?? [];
+            $listed = 0;
+            $omitted = 0;
+            $lines = '';
+
+            foreach ($block['field_key_map'] as $field_name => $field_key) {
+                $type = $type_map[$field_name] ?? '';
+
+                if ($type === 'clone') {
+                    continue;
+                }
+
+                if (!in_array($type, self::CONTENT_FIELD_TYPES, true)) {
+                    $omitted++;
+                    continue;
+                }
+
+                $annotation = $this->get_image_annotation($field_name, $type_map);
+                $lines .= "  {$field_name}{$annotation}\n";
+                $listed++;
+            }
+
+            if ($listed > 0) {
+                $entry .= "\nContent fields (give each a value in `data`; field keys are added for you):\n";
+                $entry .= "```\n" . $lines . "```\n";
+            }
+
+            if ($omitted > 0) {
+                // Say that they exist. Without this the model infers the listed set is
+                // exhaustive and invents names for styling it wants to set -- which the
+                // schema validator now rejects, turning a silent omission into a failed
+                // generation. Telling it to leave them alone is cheaper than either.
+                $entry .= "- {$omitted} further styling/layout fields exist (spacing, colour,"
+                    . " alignment, visibility). They are not listed: leave them unset and the"
+                    . " design system's defaults apply. Do NOT invent names for them.\n";
+            }
+        }
+
+        $entry .= "\n";
+        return $entry;
     }
 
     /**

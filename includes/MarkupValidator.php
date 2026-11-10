@@ -164,6 +164,9 @@ class MarkupValidator
             return;
         }
 
+        $field_type_map = $manifest_block['field_type_map'] ?? [];
+        $field_variants = $manifest_block['field_variants'] ?? [];
+
         // Check that every field value has its _fieldname companion
         foreach ($data as $key => $value) {
             // Skip underscore-prefixed keys (they are the companions)
@@ -172,23 +175,121 @@ class MarkupValidator
             }
 
             $companion_key = '_' . $key;
+            $expected_key = $this->map_key_for($key, $field_key_map, $field_type_map);
 
             if (!isset($data[$companion_key])) {
                 // Check if this field exists in the field key map
-                if (isset($field_key_map[$key])) {
-                    $errors[] = "Block `{$name}`: field `{$key}` is missing its `{$companion_key}` field key companion. Expected value: `{$field_key_map[$key]}`.";
+                if ($expected_key !== null) {
+                    $errors[] = "Block `{$name}`: field `{$key}` is missing its `{$companion_key}` field key companion. Expected value: `{$expected_key}`.";
                 } else {
                     $warnings[] = "Block `{$name}`: field `{$key}` has no `{$companion_key}` companion and is not in the field key map.";
                 }
             } else {
-                // Verify the companion value matches the known field key
-                if (isset($field_key_map[$key]) && $data[$companion_key] !== $field_key_map[$key]) {
-                    $errors[] = "Block `{$name}`: field `{$key}` has wrong field key `{$data[$companion_key]}`. Expected `{$field_key_map[$key]}`.";
+                // Verify the companion value matches the known field key.
+                //
+                // A name ACF defines MORE THAN ONCE has several legitimate keys -- `logo_count`
+                // is a select under flickity and a number under slick -- and the generator picks
+                // between them from the conditional rules. Accepting only the key map's single
+                // answer reported the correct choice as wrong.
+                $permitted = $this->permitted_keys($key, $expected_key, $field_key_map, $field_type_map, $field_variants);
+
+                if ($permitted !== [] && !in_array($data[$companion_key], $permitted, true)) {
+                    $expected_list = count($permitted) > 1
+                        ? 'one of `' . implode('`, `', $permitted) . '`'
+                        : '`' . $permitted[0] . '`';
+                    $errors[] = "Block `{$name}`: field `{$key}` has wrong field key `{$data[$companion_key]}`. Expected {$expected_list}.";
                 }
             }
         }
 
         $this->validate_against_schema($name, $data, $errors, $warnings);
+    }
+
+    /**
+     * Every field key this data key may legitimately carry.
+     *
+     * Usually one. More when ACF defines the name several times under conditional logic, where
+     * each variant's key is correct for the branch that variant belongs to -- checking which
+     * branch the data is actually on is the generator's job, not the validator's, so any of them
+     * is accepted here.
+     *
+     * @param array<string, string> $field_key_map
+     * @param array<string, string> $field_type_map
+     * @param array<string, array<int, array{key: string}>> $field_variants
+     * @return array<int, string> empty when the block has no such field at all
+     */
+    private function permitted_keys(
+        string $key,
+        ?string $expected_key,
+        array $field_key_map,
+        array $field_type_map,
+        array $field_variants
+    ): array {
+        $name = $key;
+
+        // A repeater row carries its index; variants are declared on the flattened name.
+        if (!isset($field_variants[$name]) && preg_match('/^(.+?)_(\d+)_(.+)$/', $key, $parts)) {
+            [, $parent, , $sub] = $parts;
+            $parent_type = $field_type_map[$parent] ?? '';
+
+            if ($parent_type === 'repeater' || $parent_type === 'flexible_content') {
+                $name = $parent . '_' . $sub;
+            }
+        }
+
+        if (isset($field_variants[$name])) {
+            $keys = [];
+
+            foreach ($field_variants[$name] as $variant) {
+                if (!empty($variant['key'])) {
+                    $keys[] = (string) $variant['key'];
+                }
+            }
+
+            if ($keys !== []) {
+                return $keys;
+            }
+        }
+
+        return $expected_key === null ? [] : [$expected_key];
+    }
+
+    /**
+     * Resolve a data key to its authoritative ACF field key, or null if the block has no such
+     * field.
+     *
+     * The direct lookup covers most keys. The second branch exists because a **repeater row is
+     * stored with its index in the name** -- `col_width_0_breakpoint` -- while the key map holds
+     * sub-fields without it (`col_width_breakpoint`). Without stripping the index, every
+     * generated repeater row was reported as "not in the field key map": a warning that named a
+     * real, correctly-mapped field and told the operator nothing actionable. `acf/column` alone
+     * produced four of them per generation.
+     *
+     * The index is only stripped when the parent really is a repeater or flexible-content field,
+     * so a field whose own name happens to contain `_0_` is never silently rewritten to a
+     * different field's key.
+     *
+     * @param array<string, string> $field_key_map
+     * @param array<string, string> $field_type_map
+     */
+    private function map_key_for(string $key, array $field_key_map, array $field_type_map): ?string
+    {
+        if (isset($field_key_map[$key])) {
+            return $field_key_map[$key];
+        }
+
+        if (!preg_match('/^(.+?)_(\d+)_(.+)$/', $key, $parts)) {
+            return null;
+        }
+
+        [, $parent, , $sub] = $parts;
+        $parent_type = $field_type_map[$parent] ?? '';
+
+        if ($parent_type !== 'repeater' && $parent_type !== 'flexible_content') {
+            return null;
+        }
+
+        return $field_key_map[$parent . '_' . $sub] ?? null;
     }
 
     /**
@@ -264,6 +365,20 @@ class MarkupValidator
             $where = $property !== '' ? "field `{$property}`" : 'data object';
 
             if ($constraint === 'required') {
+                // A required field that declares a `default` is genuinely harmless to omit --
+                // ACF writes the default on save, so the stored block is correct either way.
+                // `show_ids` is required on all 48 blocks and defaults to 0, which made it 11 of
+                // the ~14 warnings on every single generation: noise that trained the operator to
+                // ignore the warning list, including the entries that did mean something.
+                // Required fields WITHOUT a default still warn, because there the omission
+                // really can leave the block incomplete. This is NOT the conditional case:
+                // a field ACF only requires on a branch (`modal_id` when `trigger_modal` is on)
+                // is no longer in `required` at all -- the generator moved it into an
+                // `anyOf`/`not` guard that asserts it only when its branch is live.
+                if ($property !== '' && array_key_exists('default', $schema['properties'][$property] ?? [])) {
+                    continue;
+                }
+
                 $warnings[] = "Block `{$name}`: {$where} {$message} ACF will fall back to the field's default.";
                 continue;
             }
