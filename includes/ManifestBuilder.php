@@ -32,13 +32,14 @@ class ManifestBuilder
         // Build field key maps first (reads JSON files)
         $block_field_maps = $this->field_key_map->build();
         $block_field_types = $this->field_key_map->get_all_types();
+        $block_field_variants = $this->field_key_map->get_all_variants();
 
         $settings = Plugin::get_settings();
 
         $manifest = [
             'version' => TAIPB_VERSION,
             'generated_at' => gmdate('c'),
-            'blocks' => $this->collect_blocks($block_field_maps, $block_field_types),
+            'blocks' => $this->collect_blocks($block_field_maps, $block_field_types, $block_field_variants),
             'layouts' => $settings['include_genesis_layouts'] ? $this->collect_genesis_layouts() : [],
             'patterns' => $settings['include_editor_patterns'] ? $this->collect_editor_patterns() : [],
             'post_types' => $this->collect_post_types(),
@@ -90,9 +91,14 @@ class ManifestBuilder
      *
      * @param  array<string, array<string, string>> $block_field_maps  field name => ACF key
      * @param  array<string, array<string, string>> $block_field_types field name => ACF type
+     * @param  array<string, array<string, array<int, array{key: string, type: string, choices: array<int, string>, conditional: array}>>> $block_field_variants
      * @return array<string, array<string, mixed>>
      */
-    private function collect_blocks(array $block_field_maps, array $block_field_types = []): array
+    private function collect_blocks(
+        array $block_field_maps,
+        array $block_field_types = [],
+        array $block_field_variants = []
+    ): array
     {
         $blocks = [];
 
@@ -120,6 +126,9 @@ class ManifestBuilder
                 'supports' => $this->simplify_supports($supports),
                 'field_key_map' => $block_field_maps[$name] ?? [],
                 'field_type_map' => $block_field_types[$name] ?? [],
+                // Present only for the names ACF defines more than once -- 3 pairs across 48
+                // blocks today -- so the common block carries no extra bytes.
+                'field_variants' => $block_field_variants[$name] ?? [],
                 'field_count' => count($block_field_maps[$name] ?? []),
                 'usage_notes' => $this->curated->usage_notes_for($name),
             ];

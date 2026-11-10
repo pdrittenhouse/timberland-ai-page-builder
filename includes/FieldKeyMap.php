@@ -23,6 +23,22 @@ class FieldKeyMap
     /** @var array<string, array<string, string>> Block name → [field_name → field_type] */
     private array $block_field_types = [];
 
+    /**
+     * Block name → [field_name → list of candidate definitions], for names ACF defines MORE THAN
+     * ONCE.
+     *
+     * ACF permits several fields with one name in a block, separated only by conditional logic --
+     * `acf/logo-slider.logo_count` is a `select` of words when `slider == flickity` and a `number`
+     * when `slider == slick`. A name-keyed map keeps whichever group is merged last, so the other
+     * variant's companion key was simply wrong, with nothing to indicate it.
+     *
+     * Only ambiguous names appear here; a name with one definition is absent, so a consumer can
+     * treat `isset()` as "this needs disambiguating".
+     *
+     * @var array<string, array<string, array<int, array{key: string, type: string, choices: array<int, string>, conditional: array<int, array<int, array{field: string, operator: string, value: string}>>}>>>
+     */
+    private array $block_field_variants = [];
+
     /** @var array<string, array> Loaded field group cache: group_key → group data */
     private array $group_cache = [];
 
@@ -41,6 +57,7 @@ class FieldKeyMap
     {
         $this->block_field_maps = [];
         $this->block_field_types = [];
+        $this->block_field_variants = [];
         $this->group_cache = [];
         $this->field_cache = [];
 
@@ -66,12 +83,20 @@ class FieldKeyMap
 
             foreach ($block_names as $block_name) {
                 $types = [];
-                $fields = $this->flatten_fields($group['fields'] ?? [], '', 0, $types);
+                $defs = [];
+                $fields = $this->flatten_fields($group['fields'] ?? [], '', 0, $types, $defs);
 
                 if ($block_name === 'all') {
                     $wildcard['fields'] = array_merge($wildcard['fields'], $fields);
                     $wildcard['types'] = array_merge($wildcard['types'], $types);
                     continue;
+                }
+
+                // Accumulated across groups, because the same name can be defined in two of them.
+                foreach ($defs as $name => $list) {
+                    foreach ($list as $def) {
+                        $this->block_field_variants[$block_name][$name][$def['key']] = $def;
+                    }
                 }
 
                 if (!isset($this->block_field_maps[$block_name])) {
@@ -102,7 +127,81 @@ class FieldKeyMap
             }
         }
 
+        // A single definition is not a variant. Dropping those here is what lets a consumer read
+        // `isset($variants[$name])` as "ambiguous" with no further test.
+        foreach ($this->block_field_variants as $block_name => $names) {
+            foreach ($names as $name => $defs) {
+                if (count($defs) < 2) {
+                    unset($this->block_field_variants[$block_name][$name]);
+                }
+            }
+
+            if (empty($this->block_field_variants[$block_name])) {
+                unset($this->block_field_variants[$block_name]);
+            }
+        }
+
+        // Resolve each rule's field KEY to the field NAME a data object is keyed by. Without
+        // this a consumer would have to reverse the map itself, and a rule naming a key absent
+        // from this block would look like a rule that cannot be satisfied.
+        foreach ($this->block_field_variants as $block_name => $names) {
+            $by_key = array_flip($this->block_field_maps[$block_name] ?? []);
+
+            foreach ($names as $name => $defs) {
+                foreach ($defs as $i => $def) {
+                    $groups = [];
+
+                    foreach ($def['conditional'] as $group) {
+                        $rules = [];
+
+                        foreach ((array) $group as $rule) {
+                            $dep = $by_key[$rule['field'] ?? ''] ?? null;
+
+                            if ($dep === null) {
+                                // Unresolvable, so the whole group is dropped rather than
+                                // half-evaluated into a condition that is not the real one.
+                                $rules = [];
+                                break;
+                            }
+
+                            $rules[] = [
+                                'field' => $dep,
+                                'operator' => (string) ($rule['operator'] ?? '=='),
+                                'value' => (string) ($rule['value'] ?? ''),
+                            ];
+                        }
+
+                        if ($rules) {
+                            $groups[] = $rules;
+                        }
+                    }
+
+                    $defs[$i]['conditional'] = $groups;
+                }
+
+                $this->block_field_variants[$block_name][$name] = array_values($defs);
+            }
+        }
+
         return $this->block_field_maps;
+    }
+
+    /**
+     * Candidate definitions for the names this block defines more than once.
+     *
+     * @return array<string, array<int, array{key: string, type: string, choices: array<int, string>, conditional: array<int, array<int, array{field: string, operator: string, value: string}>>}>>
+     */
+    public function get_block_variants(string $block_name): array
+    {
+        return $this->block_field_variants[$block_name] ?? [];
+    }
+
+    /**
+     * @return array<string, array<string, array<int, array{key: string, type: string, choices: array<int, string>, conditional: array<int, array<int, array{field: string, operator: string, value: string}>>}>>>
+     */
+    public function get_all_variants(): array
+    {
+        return $this->block_field_variants;
     }
 
     /**
@@ -254,7 +353,7 @@ class FieldKeyMap
      * @param array  &$types Output: field_name → field_type (for image annotation)
      * @return array<string, string> field_name → field_key
      */
-    private function flatten_fields(array $fields, string $prefix, int $depth = 0, array &$types = []): array
+    private function flatten_fields(array $fields, string $prefix, int $depth = 0, array &$types = [], array &$defs = []): array
     {
         if ($depth > 10) {
             return [];
@@ -285,16 +384,58 @@ class FieldKeyMap
                 $map[$full_name] = $key;
                 $types[$full_name] = $type;
                 $map = array_merge($map, $this->resolve_clone($field, $prefix, $depth, $types));
+            } elseif (!empty($field['layouts'])) {
+                /**
+                 * FLEXIBLE CONTENT keeps its fields under `layouts[].sub_fields`, not
+                 * `sub_fields`, so descending only the latter reached nothing at all --
+                 * `acf/posts-loop.promo_layout` has 13 layouts and the map had 0 children.
+                 *
+                 * A layout contributes NO name segment: ACF stores a row as
+                 * `{field}_{index}_{subfield}`, so the un-indexed form is `{field}_{subfield}`.
+                 * Every layout is flattened under the same prefix for that reason.
+                 *
+                 * Two layouts may define the same sub-field name with different types. That is
+                 * the same shape as the conditional same-name case, and `$defs` already records
+                 * every candidate, so a collision surfaces as a variant rather than one
+                 * definition silently winning.
+                 */
+                $map[$full_name] = $key;
+                $types[$full_name] = $type;
+                $sub_prefix = $full_name . '_';
+
+                foreach ($field['layouts'] as $layout) {
+                    if (empty($layout['sub_fields'])) {
+                        continue;
+                    }
+
+                    $map = array_merge(
+                        $map,
+                        $this->flatten_fields($layout['sub_fields'], $sub_prefix, $depth + 1, $types, $defs)
+                    );
+                }
             } elseif (!empty($field['sub_fields'])) {
                 // Group or repeater: map parent, then recurse into sub_fields
                 $map[$full_name] = $key;
                 $types[$full_name] = $type;
                 $sub_prefix = $full_name . '_';
-                $map = array_merge($map, $this->flatten_fields($field['sub_fields'], $sub_prefix, $depth + 1, $types));
+                $map = array_merge($map, $this->flatten_fields($field['sub_fields'], $sub_prefix, $depth + 1, $types, $defs));
             } else {
                 $map[$full_name] = $key;
                 $types[$full_name] = $type;
             }
+
+            // Recorded for EVERY leaf, because ambiguity is only visible once the whole group has
+            // been walked. build() discards the names that turned out to have one definition.
+            $defs[$full_name][] = [
+                'key' => $key,
+                'type' => $type,
+                'choices' => array_map('strval', array_keys($field['choices'] ?? [])),
+                // The rules are what SEPARATE two same-named fields, so they are the only
+                // non-guessing way to tell which one a given data object means. Stored raw here
+                // (rules reference field KEYS); build() resolves those to names once the block's
+                // full map exists.
+                'conditional' => $field['conditional_logic'] ?? [],
+            ];
         }
 
         return $map;
@@ -343,7 +484,27 @@ class FieldKeyMap
                         $map[$full_name] = $field['key'];
                         $types[$full_name] = $field['type'] ?? '';
 
-                        if (!empty($field['sub_fields'])) {
+                        if (($field['type'] ?? '') === 'clone') {
+                            // A cloned field that is ITSELF a clone has no `sub_fields` -- it has
+                            // its own `clone` refs -- so descending sub_fields finds nothing and
+                            // the whole subtree is lost. `acf/modal.header_close_button` clones a
+                            // list of FIELD refs including `icon_left` and `icon_right`, both
+                            // clones, and the map ended with `header_close_button_display` but no
+                            // `header_close_button_display_display`.
+                            //
+                            // The GROUP branch above never had this problem: it hands the group's
+                            // fields to flatten_fields, which handles a nested clone properly. That
+                            // asymmetry is why `resolve_clone()` looked correct when tested --
+                            // the test exercised the group branch.
+                            //
+                            // `$clone_prefix` is passed, not `$full_name`, so the nested clone's
+                            // own `prefix_name` decides whether its name is added -- the same rule
+                            // flatten_fields applies.
+                            $map = array_merge(
+                                $map,
+                                $this->resolve_clone($field, $clone_prefix, $depth + 1, $types)
+                            );
+                        } elseif (!empty($field['sub_fields'])) {
                             $sub_prefix = $full_name . '_';
                             $map = array_merge(
                                 $map,
