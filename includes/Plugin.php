@@ -152,6 +152,36 @@ class Plugin
         $stored = get_option('taipb_settings', []);
         $sanitized['api_key'] = self::store_api_key($input, $stored, 'api_key');
         $sanitized['openai_api_key'] = self::store_api_key($input, $stored, 'openai_api_key');
+
+        /**
+         * The Figma token is routed to its OWN option and never kept here.
+         *
+         * `FigmaCredentials` owns `taipb_figma_token`, so returning the value into
+         * `taipb_settings` would store the credential twice -- and the copy in the settings array
+         * would be the one nothing encrypts on read. One form, one save, one home.
+         *
+         * Same three cases as an API key: blank means unchanged (the form never renders the
+         * stored value, so an untouched field submits nothing), the sentinel clears it, anything
+         * else is a new token.
+         */
+        if (array_key_exists('figma_token', $input)) {
+            $submitted = trim(sanitize_text_field((string) $input['figma_token']));
+
+            if ($submitted === self::CLEAR_SENTINEL) {
+                FigmaCredentials::store('');
+            } elseif ($submitted !== '') {
+                $result = FigmaCredentials::store($submitted);
+
+                if (is_wp_error($result)) {
+                    add_settings_error(
+                        'taipb_settings',
+                        'figma_token',
+                        $result->get_error_message(),
+                        'error'
+                    );
+                }
+            }
+        }
         $sanitized['model'] = sanitize_text_field($input['model'] ?? $defaults['model']);
         $sanitized['max_tokens'] = absint($input['max_tokens'] ?? $defaults['max_tokens']);
         $sanitized['rate_limit_per_hour'] = absint($input['rate_limit_per_hour'] ?? $defaults['rate_limit_per_hour']);

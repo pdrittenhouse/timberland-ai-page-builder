@@ -5,6 +5,7 @@ namespace TimberlandAIPageBuilder\Tests\Unit;
 use Brain\Monkey\Functions;
 use PHPUnit\Framework\TestCase;
 use TimberlandAIPageBuilder\FigmaCredentials;
+use TimberlandAIPageBuilder\Plugin;
 use TimberlandAIPageBuilder\Tests\Fixture\WordPressStubs;
 
 /**
@@ -37,6 +38,15 @@ class FigmaCredentialsTest extends TestCase
 
             return true;
         });
+
+        // What `Plugin::sanitize_settings()` reaches for. Stubbed here rather than in
+        // `stubWordPress()` so a test declares what it actually exercises -- the trait's docblock
+        // makes that point, and a credential test reaching add_settings_error() is worth seeing.
+        Functions\when('sanitize_text_field')->returnArg();
+        Functions\when('wp_kses_post')->returnArg();
+        Functions\when('absint')->alias(static fn($v): int => abs((int) $v));
+        Functions\when('add_settings_error')->justReturn(null);
+        Functions\when('is_wp_error')->alias(static fn($t): bool => $t instanceof \WP_Error);
 
         if (!defined('AUTH_KEY')) {
             define('AUTH_KEY', str_repeat('k', 48));
@@ -121,6 +131,35 @@ class FigmaCredentialsTest extends TestCase
 
         $this->assertInstanceOf(\WP_Error::class, $result);
         $this->assertSame('figma_token_short', $result->get_error_code());
+    }
+
+    public function test_the_settings_form_routes_the_token_to_its_own_option(): void
+    {
+        // The form posts `taipb_settings[figma_token]`, but FigmaCredentials owns
+        // `taipb_figma_token`. Returning the value into the settings array would store the
+        // credential twice, and the copy in `taipb_settings` is the one nothing decrypts on read.
+        $saved = Plugin::sanitize_settings(['figma_token' => 'figd_averylongfigmapersonalaccesstoken']);
+
+        $this->assertArrayNotHasKey('figma_token', $saved, 'the token must not be kept in taipb_settings');
+        $this->assertSame('figd_averylongfigmapersonalaccesstoken', FigmaCredentials::get());
+    }
+
+    public function test_a_blank_submission_keeps_the_saved_token(): void
+    {
+        // The form never renders the stored value, so an untouched field submits nothing.
+        // Treating that as "clear it" would wipe the token on any unrelated settings save.
+        FigmaCredentials::store('figd_averylongfigmapersonalaccesstoken');
+        Plugin::sanitize_settings(['model' => 'claude-opus-4-6']);
+
+        $this->assertTrue(FigmaCredentials::is_configured());
+    }
+
+    public function test_the_sentinel_clears_it_through_the_form(): void
+    {
+        FigmaCredentials::store('figd_averylongfigmapersonalaccesstoken');
+        Plugin::sanitize_settings(['figma_token' => Plugin::CLEAR_SENTINEL]);
+
+        $this->assertFalse(FigmaCredentials::is_configured());
     }
 
     public function test_the_consent_notice_states_the_real_scope(): void

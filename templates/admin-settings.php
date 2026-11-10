@@ -10,6 +10,7 @@ $settings = TimberlandAIPageBuilder\Plugin::get_settings();
 // otherwise sit in this template's scope for the whole render -- one stray `print_r($settings)`
 // in a debug session away from the page that renders them. They are not needed here at all.
 $credential_status = TimberlandAIPageBuilder\Plugin::credential_status();
+$figma_status = TimberlandAIPageBuilder\FigmaCredentials::status();
 $has_api_key = $credential_status['api_key']['configured'];
 $has_openai_key = $credential_status['openai_api_key']['configured'];
 unset($settings['api_key'], $settings['openai_api_key']);
@@ -87,6 +88,42 @@ $stats = $manifest_store->get_stats();
                             <p class="description">Your OpenAI API key (optional). Alternatively, define <code>TAIPB_OPENAI_API_KEY</code> in <code>wp-config.php</code>.
                                 <?php if ($st['configured']): ?>
                                     Leave blank to keep the saved key, or type
+                                    <code><?php echo esc_html(\TimberlandAIPageBuilder\Plugin::CLEAR_SENTINEL); ?></code>
+                                    to remove it.
+                                <?php endif; ?>
+                            </p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Figma Access Token</th>
+                    <td>
+                        <?php if ('constant' === $figma_status['source']): ?>
+                            <p class="description">Token is defined in <code>wp-config.php</code> via <code>TAIPB_FIGMA_TOKEN</code> constant.</p>
+                        <?php else: ?>
+                            <?php if ($figma_status['configured']): ?>
+                                <p class="description"><strong>A token is saved.</strong></p>
+                            <?php endif; ?>
+                            <input type="password"
+                                   name="taipb_settings[figma_token]"
+                                   value=""
+                                   class="regular-text"
+                                   autocomplete="off"
+                                   placeholder="<?php echo $figma_status['configured'] ? esc_attr__('Leave blank to keep the saved token', 'taipb') : ''; ?>" />
+                            <?php
+                            /*
+                             * FG2: the consent notice is shown HERE, where the token is entered,
+                             * not buried in documentation. A Figma PAT is account-wide -- it
+                             * reads every file the issuing account can see -- and that is the
+                             * one thing someone pasting it needs to know before they do.
+                             */
+                            ?>
+                            <p class="description" style="max-width:46em;border-left:3px solid #d63638;padding-left:.75em;">
+                                <?php echo esc_html(\TimberlandAIPageBuilder\FigmaCredentials::CONSENT_NOTICE); ?>
+                            </p>
+                            <p class="description">Stored encrypted. Alternatively, define <code>TAIPB_FIGMA_TOKEN</code> in <code>wp-config.php</code>.
+                                <?php if ($figma_status['configured']): ?>
+                                    Leave blank to keep the saved token, or type
                                     <code><?php echo esc_html(\TimberlandAIPageBuilder\Plugin::CLEAR_SENTINEL); ?></code>
                                     to remove it.
                                 <?php endif; ?>
