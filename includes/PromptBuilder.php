@@ -225,6 +225,37 @@ anywhere. The server adds every companion key itself, from its own authoritative
 respond — anything you write there is discarded and replaced. Use ONLY the field names listed
 under each block in AVAILABLE BLOCKS; a name that is not listed will be rejected.
 
+A field name sharing a prefix with a listed one does NOT imply it exists. `hero-unit` lists
+`jumbotron_button_classes`, and that does not mean `jumbotron_title` is a field — it is not.
+Check the list; never extrapolate from a prefix.
+
+## CRITICAL: Yes/No Fields
+
+Write `"1"` for on and `"0"` for off. That is what ACF stores, and what the editor itself
+writes.
+
+Never write the strings `"true"` or `"false"`. `"false"` is especially dangerous: PHP casts a
+non-empty string to boolean TRUE, so `"include_image": "false"` would turn the image ON. It is
+rejected for that reason. A real JSON `true`/`false` and a bare `1`/`0` are both accepted.
+
+## CRITICAL: Repeating Fields
+
+A repeating field is NOT a JSON array. ACF stores the ROW COUNT on the field itself, and each
+row's values as separate flat keys numbered from zero:
+
+```
+"data": {
+  "col_width": 2,
+  "col_width_0_breakpoint": "md",
+  "col_width_0_width": "6",
+  "col_width_1_breakpoint": "lg",
+  "col_width_1_width": "4"
+}
+```
+
+Writing `"col_width": [{...}]` is rejected. The row keys follow
+`{field}_{index}_{subfield}` exactly.
+
 ## CRITICAL: Do Not Copy Field Keys From Examples
 Reference patterns and layouts below may contain `_field_name` companions and `field_XXXXX`
 keys from whenever they were captured. Ignore them entirely and never carry them into your

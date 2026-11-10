@@ -53,8 +53,25 @@ final class PromptTokenBudgetTest extends TestCase {
      */
     private const WORST_CASE_RATCHET = 8100;
 
-    /** What a focused request costs today, with headroom. Ratchet: lower it when it improves. */
-    private const FOCUSED_CEILING = 2000;
+    /**
+     * What a focused request costs today, with headroom. Ratchet: lower it when it improves.
+     *
+     * Raised 2,000 -> 2,100 on 2026-11-10, with the measurement and the reason this ratchet
+     * asks for. The fixed RULES preamble went 1,708 -> 2,002 tokens when two sections were
+     * added, both earning their place from a real generation's errors:
+     *
+     *   - yes/no fields are `"1"`/`"0"`. The model wrote `"true"`/`"false"`, and `"false"` is
+     *     a genuine footgun -- PHP casts a non-empty string to boolean TRUE, so
+     *     `"include_image": "false"` would turn the image ON. The schema rejects it for that
+     *     reason; this stops it being written at all.
+     *   - repeating fields are a row COUNT plus `{field}_{index}_{subfield}` keys, not a JSON
+     *     array. The model wrote arrays for `col_width` and `col_offset` three times.
+     *
+     * ~294 tokens of fixed cost to stop two classes of error that were each burning a retry,
+     * one of them silently invertible. The ratchet is doing its job by making that a decision
+     * rather than a drift.
+     */
+    private const FOCUSED_CEILING = 2100;
 
     protected function setUp(): void {
         $this->stubWordPress();
