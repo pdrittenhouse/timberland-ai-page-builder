@@ -272,6 +272,24 @@ class Plugin
         return new ManifestStore($builder);
     }
 
+    /**
+     * The schema oracle used to validate generated output.
+     *
+     * Built here rather than inside {@see MarkupValidator} so that every construction site shares
+     * one instance and therefore one schema cache -- the resolved contract is 1.7 MB and the
+     * per-block baselines are larger still, so re-reading them per validation would be felt.
+     *
+     * This existing at all is the point: the oracle was written, tested and then constructed
+     * NOWHERE, so schema validation never ran on a real request. All three
+     * `new MarkupValidator(...)` sites now pass it.
+     */
+    public static function get_schema_oracle(): SchemaOracle
+    {
+        static $oracle = null;
+
+        return $oracle ??= new SchemaOracle();
+    }
+
     private function regenerate_manifest(): void
     {
         $store = self::get_manifest_store();

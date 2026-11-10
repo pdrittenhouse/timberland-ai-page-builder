@@ -67,6 +67,75 @@ trait WordPressStubs {
         }
     }
 
+    /**
+     * The handful of extra WordPress functions the generation pipeline touches.
+     *
+     * Kept separate from `stubWordPress()` so a test declares what it actually needs: a prompt
+     * builder reaching `get_current_user_id()` would be a surprise worth seeing fail.
+     */
+    protected function stubGenerationPipeline(): void {
+        Functions\when( 'get_current_user_id' )->justReturn( 1 );
+        Functions\when( 'wp_json_encode' )->alias(
+            static fn( $data, int $flags = 0, int $depth = 512 ) => json_encode( $data, $flags, $depth )
+        );
+        Functions\when( 'esc_html' )->returnArg();
+        Functions\when( '__' )->returnArg();
+
+        // Access control. Granted here because the eval suite is about what happens to a
+        // model's response once a permitted user has asked -- a capability test belongs with
+        // the capability check, and silently granting it there would be the bug.
+        Functions\when( 'is_user_logged_in' )->justReturn( true );
+        Functions\when( 'current_user_can' )->justReturn( true );
+        Functions\when( 'get_userdata' )->justReturn( false );
+        // Fixed, not `now`: a timestamp that moves makes a recorded row unassertable.
+        Functions\when( 'current_time' )->justReturn( '2026-01-01 00:00:00' );
+
+        // `save_history()` writes a row with $wpdb, which does not exist here. A double that
+        // RECORDS the insert rather than discarding it, so a test can assert history is written
+        // -- and so a silent failure to write does not look like success.
+        $GLOBALS['wpdb'] = new class {
+            public string $prefix = 'wp_';
+
+            /** @var array<int, array<string, mixed>> */
+            public array $inserted = array();
+
+            /**
+             * @param array<string, mixed> $data
+             * @param array<int, string>   $format
+             */
+            public function insert( string $table, array $data, array $format = array() ): int {
+                $this->inserted[] = array( 'table' => $table, 'data' => $data );
+
+                return 1;
+            }
+
+            public function prepare( string $query, ...$args ): string {
+                return $query;
+            }
+
+            /** @return array<int, mixed> */
+            public function get_results( string $query, $output = null ): array {
+                return array();
+            }
+
+            public function get_var( string $query ) {
+                return null;
+            }
+        };
+
+        // `user_can_generate()` intersects the user's roles against an allow-list, so the stub
+        // has to carry a roles array rather than just be truthy.
+        Functions\when( 'wp_get_current_user' )->alias(
+            static function (): object {
+                $user = new \stdClass();
+                $user->ID = 1;
+                $user->roles = array( 'administrator' );
+
+                return $user;
+            }
+        );
+    }
+
     protected function unstubWordPress(): void {
         Monkey\tearDown();
     }

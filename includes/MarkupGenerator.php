@@ -15,10 +15,32 @@ class MarkupGenerator
     private ManifestStore $manifest_store;
     private RateLimiter $rate_limiter;
 
-    public function __construct(ManifestStore $manifest_store, RateLimiter $rate_limiter)
-    {
+    /**
+     * How an LLM client is obtained, as `fn(?string $model): LLMClientInterface`.
+     *
+     * Injectable so the pipeline can be exercised without an API key, a network call or a
+     * charge. The seam is the INTERFACE the codebase already defines, not the HTTP layer:
+     * `ClaudeClient` builds `new Anthropic\Client(apiKey: ...)` internally and `OpenAIClient`
+     * does the equivalent, so there is no transport to swap -- a mock HTTP client could not
+     * reach either. `LLMClientInterface` is the real boundary, and both clients already
+     * implement it.
+     *
+     * @var callable(?string): LLMClientInterface
+     */
+    private $client_factory;
+
+    /**
+     * @param callable(?string): LLMClientInterface|null $client_factory
+     */
+    public function __construct(
+        ManifestStore $manifest_store,
+        RateLimiter $rate_limiter,
+        ?callable $client_factory = null
+    ) {
         $this->manifest_store = $manifest_store;
         $this->rate_limiter = $rate_limiter;
+        $this->client_factory = $client_factory
+            ?? static fn(?string $model): LLMClientInterface => LLMClientFactory::create($model);
     }
 
     /**
@@ -67,15 +89,37 @@ class MarkupGenerator
         $system_prompt = $prompt_builder->build($prompt, $post_type, $use_patterns);
 
         // Call LLM API (Claude or OpenAI based on model)
-        $client = LLMClientFactory::create($model);
+        $client = ($this->client_factory)($model);
         $api_response = $client->generate($system_prompt, $prompt);
 
         // Record rate limit usage
         $this->rate_limiter->record($user_id);
 
-        // Validate output
-        $validator = new MarkupValidator($manifest);
-        $validation = $validator->validate($api_response['content']);
+        // Validate what will actually be STORED, which means post-processing FIRST.
+        //
+        // This used to validate the raw response and post-process afterwards, and the retry
+        // decision was made on the pre-processing result. That was wrong in both directions
+        // once the prompt stopped sending ACF field keys:
+        //
+        //  - post-processing UNCONDITIONALLY writes every `_fieldname` companion from the
+        //    manifest, so a response correctly omitting them -- which is now what the prompt
+        //    asks for -- failed validation on "missing companion" and burned a retry fixing
+        //    something that was already going to be fixed;
+        //  - anything post-processing itself broke was never a retry trigger, because the
+        //    decision had already been taken.
+        //
+        // The order now matches what the words mean: generate, normalise, judge.
+        $validator = new MarkupValidator($manifest, Plugin::get_schema_oracle());
+
+        $normalise = fn(string $raw): string => $this->post_process_markup(
+            $this->strip_markdown_fences($raw),
+            $manifest,
+            $pattern_image_data,
+            $prompt
+        );
+
+        $clean_markup = $normalise($api_response['content']);
+        $validation = $validator->validate($clean_markup);
 
         // If validation failed with errors, retry once with feedback
         if (!$validation['valid'] && !empty($validation['errors'])) {
@@ -85,25 +129,23 @@ class MarkupGenerator
                 $validation['errors']
             );
 
-            // Re-validate the retry
-            $retry_validation = $validator->validate($retry_response['content']);
+            $retry_markup = $normalise($retry_response['content']);
+            $retry_validation = $validator->validate($retry_markup);
 
             // Use retry if it's better (fewer errors or now valid)
             if ($retry_validation['valid'] || count($retry_validation['errors']) < count($validation['errors'])) {
+                $input_tokens = $api_response['input_tokens'] + $retry_response['input_tokens'];
+                $output_tokens = $api_response['output_tokens'] + $retry_response['output_tokens'];
+
                 $api_response = $retry_response;
                 $validation = $retry_validation;
+                $clean_markup = $retry_markup;
 
-                // Add retry tokens to totals
-                $api_response['input_tokens'] += $retry_response['input_tokens'];
-                $api_response['output_tokens'] += $retry_response['output_tokens'];
+                // Both attempts were paid for, so both are reported.
+                $api_response['input_tokens'] = $input_tokens;
+                $api_response['output_tokens'] = $output_tokens;
             }
         }
-
-        // Strip markdown fences from final output
-        $clean_markup = $this->strip_markdown_fences($api_response['content']);
-
-        // Post-process: fix all field companion keys and image fields
-        $clean_markup = $this->post_process_markup($clean_markup, $manifest, $pattern_image_data, $prompt);
 
         // Re-validate attributes after post-processing for accurate frontend results.
         // Uses lightweight regex-based validation (no parse_blocks) since

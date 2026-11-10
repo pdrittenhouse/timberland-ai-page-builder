@@ -20,6 +20,24 @@ class PromptDecomposer
      *
      * @return array{sections: array, overall_intent: string, suggested_pattern_ids: string[]}
      */
+    /**
+     * How LLM clients are obtained, as `fn(): LLMClientInterface[]`.
+     *
+     * Same seam and the same reason as {@see MarkupGenerator}: the SDK clients are constructed
+     * internally, so `LLMClientInterface` is the only boundary a test can reach.
+     *
+     * @var (callable(): array<int, LLMClientInterface>)|null
+     */
+    private $clients_factory;
+
+    /**
+     * @param (callable(): array<int, LLMClientInterface>)|null $clients_factory
+     */
+    public function __construct(?callable $clients_factory = null)
+    {
+        $this->clients_factory = $clients_factory;
+    }
+
     public function decompose(string $user_prompt, array $manifest): array
     {
         $available = $this->build_pattern_list($manifest);
@@ -91,6 +109,10 @@ PROMPT;
      */
     private function get_decomposer_clients(): array
     {
+        if ($this->clients_factory !== null) {
+            return ($this->clients_factory)();
+        }
+
         $settings = Plugin::get_settings();
         $has_anthropic = defined('TAIPB_API_KEY') || !empty($settings['api_key']);
         $has_openai = defined('TAIPB_OPENAI_API_KEY') || !empty($settings['openai_api_key']);

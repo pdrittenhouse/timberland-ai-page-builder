@@ -608,7 +608,7 @@ class RestController
 
         $store = Plugin::get_manifest_store();
         $manifest = $store->get();
-        $validator = new MarkupValidator($manifest);
+        $validator = new MarkupValidator($manifest, Plugin::get_schema_oracle());
 
         return new \WP_REST_Response($validator->validate($markup), 200);
     }
@@ -799,7 +799,7 @@ class RestController
             $markup = $assembler->assemble($block_tree);
 
             // Validate the assembled markup
-            $validator = new MarkupValidator($manifest);
+            $validator = new MarkupValidator($manifest, Plugin::get_schema_oracle());
             $validation = $validator->validate($markup);
 
             // Save to history if prompt is provided
