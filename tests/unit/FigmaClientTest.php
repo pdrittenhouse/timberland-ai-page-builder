@@ -87,6 +87,47 @@ class FigmaClientTest extends TestCase
         $this->assertSame('figma_node_not_found', $result->get_error_code());
     }
 
+    /**
+     * @dataProvider apiFailures
+     */
+    public function test_a_failure_is_classified_by_what_the_operator_should_do(
+        int $http,
+        string $code
+    ): void {
+        // Measured against the live API: five inspections of one file inside a minute is enough to
+        // get a 429, so rate limiting is an ordinary event during a review session. Collapsed into
+        // one `figma_api_error` it reads as a dead token, and sends somebody to regenerate a PAT
+        // that was working -- the opposite of the correct action, which is to wait.
+        $this->stubTransport([['code' => $http, 'body' => '']]);
+
+        $result = (new FigmaClient('figd_testtoken_longenough'))->fetch_node($this->ref());
+
+        $this->assertInstanceOf(\WP_Error::class, $result);
+        $this->assertSame($code, $result->get_error_code());
+    }
+
+    /** @return array<string, array{0: int, 1: string}> */
+    public static function apiFailures(): array
+    {
+        return [
+            'rate limited -- wait' => [429, 'figma_rate_limited'],
+            'expired token -- re-authorise' => [403, 'figma_forbidden'],
+            'unauthorised -- re-authorise' => [401, 'figma_forbidden'],
+            'anything else -- report' => [500, 'figma_api_error'],
+            'not found -- report' => [404, 'figma_api_error'],
+        ];
+    }
+
+    public function test_rate_limiting_does_not_blame_the_token(): void
+    {
+        // The message is the whole point of the distinction, so assert the message.
+        $this->stubTransport([['code' => 429, 'body' => '']]);
+
+        $message = (new FigmaClient('figd_testtoken_longenough'))->fetch_node($this->ref())->get_error_message();
+
+        $this->assertStringContainsString('token itself is fine', $message);
+    }
+
     public function test_the_preview_is_requested_at_half_scale(): void
     {
         $this->stubTransport([

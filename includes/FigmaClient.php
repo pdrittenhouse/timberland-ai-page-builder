@@ -81,6 +81,30 @@ class FigmaClient
 
         $code = (int) wp_remote_retrieve_response_code($response);
 
+        if ($code === 429) {
+            // Distinguished from every other non-200 because the operator's correct response is
+            // different: wait, do not re-enter the token. Measured -- five inspections of one file
+            // inside a minute is enough to hit it, so this is the ordinary path during a review
+            // session, not an edge case. Folded into `figma_api_error` it reads as a dead token,
+            // which sends somebody to regenerate a PAT that was working fine.
+            return new \WP_Error(
+                'figma_rate_limited',
+                'Figma is rate-limiting this token. Wait about a minute and try again '
+                . '— the token itself is fine.'
+            );
+        }
+
+        if ($code === 403 || $code === 401) {
+            return new \WP_Error(
+                'figma_forbidden',
+                sprintf(
+                    'Figma refused the request (HTTP %d). The access token may have expired, or it '
+                    . 'may not have access to this file.',
+                    $code
+                )
+            );
+        }
+
         if ($code !== 200) {
             return new \WP_Error('figma_api_error', sprintf('Figma returned HTTP %d.', $code));
         }
