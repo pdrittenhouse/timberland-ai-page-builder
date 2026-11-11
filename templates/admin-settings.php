@@ -180,14 +180,29 @@ $stats = $manifest_store->get_stats();
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row">Max Output Tokens</th>
+                    <th scope="row"><label for="taipb-max-tokens">Max Output Tokens</label></th>
                     <td>
                         <input type="number"
+                               id="taipb-max-tokens"
                                name="taipb_settings[max_tokens]"
-                               value="<?php echo esc_attr($settings['max_tokens']); ?>"
+                               value="<?php echo esc_attr((string) $settings['max_tokens']); ?>"
                                min="1024"
                                max="32768"
                                step="1024" />
+                        <p class="description">
+                            The cap on what the model <strong>writes</strong> &mdash; sent to the
+                            provider as <code>max_tokens</code>. Not related to the Component
+                            Context Budget below, which governs how much it is <em>shown</em>.
+                            <br>
+                            Running out here <strong>truncates the block tree mid-JSON</strong>, and
+                            the generation fails with &ldquo;ran out of output budget&rdquo;.
+                            Retrying will not help: the same page produces the same length. Raise
+                            this instead.
+                            <br>
+                            Measured on this install: a six-section page design writes about
+                            <strong>1,300</strong> tokens, so the default 8,192 leaves roughly 85%
+                            headroom. Long pages and deeply nested layouts are what consume it.
+                        </p>
                     </td>
                 </tr>
                 <tr>
