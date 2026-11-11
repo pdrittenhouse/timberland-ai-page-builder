@@ -48,6 +48,9 @@ class CuratedContext
      */
     private const ARTIFACTS = [
         'selection_index' => 'ai-selection-index.json',
+        // UC6. Separate from the selection index because that one is loaded wholesale under a
+        // token ceiling (3,519 of 4,200 measured) and this is read per block.
+        'configuration' => 'ai-block-configuration.json',
     ];
 
     private string $dir;
@@ -110,6 +113,34 @@ class CuratedContext
      * The registry still supplies its title and description, so it remains selectable — it just
      * competes without the editorial steer.
      */
+    /**
+     * UC6's configuration guidance for one block, or '' when nobody has written any.
+     *
+     * Deliberately NOT merged into `usage_notes_for()`, which concatenates `best_for` and
+     * `avoid_when` into the catalogue line every block pays for. This is served beside the FIELD
+     * LIST instead, so it is paid only for the handful of blocks a generation actually picks --
+     * the same split that keeps 14,252 utility classes behind a lookup.
+     *
+     * An absent entry means undocumented, not "needs no advice". The artifact omits blocks with
+     * nothing written rather than carrying empty strings, so the two stay distinguishable and the
+     * first remains something to go and fix.
+     */
+    public function configuration_for(string $block_name): string
+    {
+        $slug = str_contains($block_name, '/')
+            ? substr($block_name, strpos($block_name, '/') + 1)
+            : $block_name;
+
+        $decoded = $this->read(self::ARTIFACTS['configuration']);
+        $entries = $decoded['entries'] ?? null;
+
+        if (!is_array($entries)) {
+            return '';
+        }
+
+        return trim((string) ($entries[$slug] ?? ''));
+    }
+
     public function usage_notes_for(string $block_name): string
     {
         $slug = str_contains($block_name, '/')

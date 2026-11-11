@@ -141,6 +141,8 @@ class ManifestBuilder
                 'field_variants' => $block_field_variants[$name] ?? [],
                 'field_count' => count($block_field_maps[$name] ?? []),
                 'usage_notes' => $this->curated->usage_notes_for($name),
+                // UC6: how to compose it, as opposed to whether to choose it.
+                'configuration' => $this->curated->configuration_for($name),
             ];
         }
 

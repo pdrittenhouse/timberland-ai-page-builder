@@ -488,6 +488,13 @@ RULES;
             $entry .= "- Usage notes: {$block['usage_notes']}\n";
         }
 
+        // UC6. Rendered HERE, with the field list, rather than on the catalogue line: it is advice
+        // about fields, it is only useful once the model has committed to the block, and it is then
+        // paid for eight blocks rather than forty-eight.
+        if (!empty($block['configuration'])) {
+            $entry .= "- HOW TO CONFIGURE: {$block['configuration']}\n";
+        }
+
         // FIELD NAMES ONLY. The ACF keys are deliberately not here.
         //
         // `MarkupGenerator::post_process_markup()` step 3 and
