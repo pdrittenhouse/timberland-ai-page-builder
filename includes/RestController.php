@@ -841,10 +841,29 @@ class RestController
             $block_tree = $this->parse_block_tree($api_response['content']);
 
             if (empty($block_tree['blocks'])) {
+                // "Please try again" is advice, and it was wrong for the most likely cause. A reply
+                // cut off at the token cap truncates mid-JSON every time at that plan size, so
+                // retrying burns another full call to fail identically. The clients already return
+                // `stop_reason`; this route simply threw it away and blamed the model.
+                $truncated = 'max_tokens' === ($api_response['stop_reason'] ?? '');
+
                 return new \WP_Error(
                     'taipb_invalid_structure',
-                    'LLM returned an invalid block tree. Please try again.',
-                    ['status' => 422]
+                    $truncated
+                        ? sprintf(
+                            'The model ran out of output budget before finishing the block tree '
+                            . '(%d tokens used, stopped at the limit). Raise max_tokens in '
+                            . 'settings, or confirm fewer sections. Retrying will hit the same '
+                            . 'limit.',
+                            (int) ($api_response['output_tokens'] ?? 0)
+                        )
+                        : sprintf(
+                            'No block tree could be read from the response (%d characters, '
+                            . 'finished with "%s").',
+                            strlen((string) $api_response['content']),
+                            (string) ($api_response['stop_reason'] ?? 'unknown')
+                        ),
+                    ['status' => 422, 'stop_reason' => $api_response['stop_reason'] ?? null]
                 );
             }
 
@@ -917,10 +936,10 @@ class RestController
      */
     private function parse_block_tree(string $raw): array
     {
-        $raw = preg_replace('/^```(?:json)?\s*\n?/i', '', trim($raw));
-        $raw = preg_replace('/\n?```\s*$/', '', $raw);
-
-        $parsed = json_decode(trim($raw), true);
+        // Extraction moved to LlmJson: this used to strip a fence only when it was the very first
+        // thing in the reply, so one sentence of preamble produced "the LLM returned an invalid
+        // block tree" for a tree that was entirely valid.
+        $parsed = LlmJson::decode($raw);
 
         if (!is_array($parsed)) {
             return ['blocks' => []];

@@ -72,15 +72,30 @@ final class PromptDecomposerEvalTest extends TestCase {
         $this->assertSame( '', $result['overall_intent'] );
     }
 
-    public function test_prose_around_the_json_degrades_to_an_empty_plan(): void {
-        $client = new FakeLLMClient( array( "Sure! Here's the plan:\n\n" . self::GOOD ) );
+    public function test_prose_around_the_json_is_read_not_discarded(): void {
+    	// This test used to assert the opposite, as a characterisation of a known defect: "only
+    	// fences are stripped, so leading prose defeats the parse and the plan is silently empty
+    	// -- the fix belongs with the fence-stripping". That fix is `LlmJson`, and this is the
+    	// behaviour the old note was predicting. The old failure was the bad kind: a perfectly
+    	// good plan was dropped and the caller fell back to keyword matching, so the only symptom
+    	// was a worse page, with nothing anywhere saying why.
+    	$client = new FakeLLMClient( array( "Sure! Here's the plan:\n\n" . self::GOOD ) );
 
-        $result = $this->decomposer( $client )->decompose( 'A landing page', ManifestFixture::manifest() );
+    	$result = $this->decomposer( $client )->decompose( 'A landing page', ManifestFixture::manifest() );
 
-        // Recorded as current behaviour, not endorsed: only fences are stripped, so leading prose
-        // defeats the parse and the plan is silently empty. Worth knowing before trusting it --
-        // the fix belongs with the fence-stripping, which already handles the adjacent case.
-        $this->assertSame( array(), $result['sections'] );
+    	$this->assertCount( 1, $result['sections'] );
+    }
+
+    public function test_a_trailing_remark_is_also_read(): void {
+    	// The other half of the same defect, and the likelier shape in practice -- a model that
+    	// answers first and then offers to adjust it.
+    	$client = new FakeLLMClient(
+    		array( "```json\n" . self::GOOD . "\n```\n\nLet me know if you want it adjusted." )
+    	);
+
+    	$result = $this->decomposer( $client )->decompose( 'A landing page', ManifestFixture::manifest() );
+
+    	$this->assertCount( 1, $result['sections'] );
     }
 
     public function test_the_first_client_to_succeed_wins_and_the_rest_are_not_called(): void {

@@ -170,11 +170,9 @@ PROMPT;
             'suggested_pattern_ids' => [],
         ];
 
-        // Strip markdown code fences if present
-        $raw = preg_replace('/^```(?:json)?\s*\n?/i', '', trim($raw));
-        $raw = preg_replace('/\n?```\s*$/', '', $raw);
-
-        $parsed = json_decode(trim($raw), true);
+        // Shared with the structure route via LlmJson. Both carried the same leading-fence-only
+        // stripper, so both mis-reported a valid reply that opened with a sentence of prose.
+        $parsed = LlmJson::decode($raw);
 
         if (!is_array($parsed) || !isset($parsed['sections'])) {
             return $empty;
