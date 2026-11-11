@@ -186,6 +186,18 @@ class Plugin
         $sanitized['max_tokens'] = absint($input['max_tokens'] ?? $defaults['max_tokens']);
         $sanitized['rate_limit_per_hour'] = absint($input['rate_limit_per_hour'] ?? $defaults['rate_limit_per_hour']);
         $sanitized['rate_limit_per_day'] = absint($input['rate_limit_per_day'] ?? $defaults['rate_limit_per_day']);
+
+        // Both of these shipped with a default, a careful docblock describing them as operator
+        // overrides, and a reader in PromptBudget / MarkupGenerator -- and no way to set either.
+        // There was no field on the settings screen, and this method dropped the key even if one
+        // had been posted, so the documented override silently did nothing.
+        $sanitized['token_budget'] = absint($input['token_budget'] ?? $defaults['token_budget']);
+
+        // Whitelisted rather than passed through: an unrecognised value would fall through
+        // MarkupGenerator's `=== 'tools'` check into the inline path, which is the slower, worse
+        // one. A typo must not silently downgrade generation quality.
+        $mode = (string) ($input['context_mode'] ?? $defaults['context_mode']);
+        $sanitized['context_mode'] = in_array($mode, ['tools', 'inline'], true) ? $mode : 'tools';
         $sanitized['allowed_roles'] = array_map('sanitize_text_field', $input['allowed_roles'] ?? $defaults['allowed_roles']);
         $sanitized['include_genesis_layouts'] = !empty($input['include_genesis_layouts']);
         $sanitized['include_editor_patterns'] = !empty($input['include_editor_patterns']);

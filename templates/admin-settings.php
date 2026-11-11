@@ -191,6 +191,61 @@ $stats = $manifest_store->get_stats();
                     </td>
                 </tr>
                 <tr>
+                    <th scope="row"><label for="taipb-token-budget">Component Context Budget</label></th>
+                    <td>
+                        <input type="number"
+                               id="taipb-token-budget"
+                               name="taipb_settings[token_budget]"
+                               value="<?php echo esc_attr((string) ($settings['token_budget'] ?? 0)); ?>"
+                               min="0"
+                               max="200000"
+                               step="500" />
+                        <p class="description">
+                            Tokens allowed for block/component context in one generation.
+                            <strong>0 uses the built-in default of
+                            <?php echo esc_html((string) \TimberlandAIPageBuilder\PromptBudget::DEFAULT_CEILING); ?>.</strong>
+                            This is not a cap on the whole request &mdash; it governs how much field
+                            detail the model is shown, and going over degrades that detail rather
+                            than refusing to generate.
+                            <br>
+                            <?php
+                            // Measured, because "8,000" means nothing without knowing what a page
+                            // actually costs: the five Natural Rose page designs each spend
+                            // 7,517-7,685 of it, which is under one block's worth of headroom.
+                            ?>
+                            Measured on this install: a six-section page spends roughly
+                            7,500&ndash;7,700 &mdash; about 4,100 for the block catalogue plus ~440
+                            per block of field detail. Raise this if pages come out using fewer
+                            block types than the design calls for.
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Block Context Mode</th>
+                    <td>
+                        <?php $mode = $settings['context_mode'] ?? 'tools'; ?>
+                        <label>
+                            <input type="radio" name="taipb_settings[context_mode]" value="tools"
+                                   <?php checked('tools', $mode); ?> />
+                            <strong>Tools</strong> &mdash; the model sees every block by name and
+                            fetches field detail only for the ones it picks.
+                        </label>
+                        <br>
+                        <label>
+                            <input type="radio" name="taipb_settings[context_mode]" value="inline"
+                                   <?php checked('inline', $mode); ?> />
+                            <strong>Inline</strong> &mdash; guess which blocks are relevant by
+                            keyword and inline all of their fields.
+                        </label>
+                        <p class="description">
+                            Leave on <strong>Tools</strong>. Inline is kept only as a fallback:
+                            measured against this manifest it showed the model 6 blocks of 48 with
+                            no content block among them, and the resulting page failed validation on
+                            40 invented field names.
+                        </p>
+                    </td>
+                </tr>
+                <tr>
                     <th scope="row">Rate Limit (per hour)</th>
                     <td>
                         <input type="number"
