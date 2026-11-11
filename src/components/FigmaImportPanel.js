@@ -9,24 +9,19 @@ import {
 import { useSelect, useDispatch } from '@wordpress/data';
 import { STORE_NAME } from '../store';
 
-/**
- * Human-readable guidance per failure code.
+/*
+ * There is deliberately NO local map of per-code help text here.
  *
- * The codes exist because the right action differs, so the UI has to differ too. A 429 that reads
- * as "something went wrong" sends somebody to regenerate a token that was working perfectly --
- * measured, since five inspections of one file inside a minute is enough to hit Figma's limit.
+ * There was one, and it shadowed the server's message for every code it covered. Within hours it
+ * was actively lying: the server had learned to read Figma's real `retry-after` (a measured 4.6
+ * days) while this file still said "wait about a minute and read it again" -- the precise wrong
+ * advice, on the one failure where retrying is expensive. Two copies of the same guidance, and the
+ * stale one won because it was checked first.
+ *
+ * The server messages are already written for the person who pasted the URL -- FigmaUrl says so in
+ * its own docblock -- and only the server can know the numbers. So the panel renders what the API
+ * returned and keeps one source of truth.
  */
-const ERROR_HELP = {
-    figma_rate_limited: 'Figma is rate-limiting this token. Wait about a minute and read it again.',
-    figma_forbidden:
-        'Figma refused the request. The token may have expired, or it may not have access to this file.',
-    taipb_figma_no_token: 'No Figma token is configured. Add one under Settings → AI Page Builder.',
-    figma_url_host: 'That is not a figma.com link.',
-    figma_url_no_node:
-        'That link does not name a frame. In Figma, right-click the frame and choose "Copy link to selection".',
-    figma_node_not_found:
-        'Figma returned no node for that frame. Check the link points at a frame you can open.',
-};
 
 /**
  * Step 1 of the Figma path: read a link, show what is in it, let the operator choose.
@@ -90,7 +85,7 @@ export default function FigmaImportPanel() {
 
             {error && (
                 <Notice status="error" isDismissible={false}>
-                    {ERROR_HELP[error.code] || error.message}
+                    {error.message || 'Could not read that Figma file.'}
                 </Notice>
             )}
 

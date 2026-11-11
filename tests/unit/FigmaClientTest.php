@@ -125,7 +125,12 @@ class FigmaClientTest extends TestCase
 
         $message = (new FigmaClient('figd_testtoken_longenough'))->fetch_node($this->ref())->get_error_message();
 
-        $this->assertStringContainsString('token itself is fine', $message);
+        $this->assertStringContainsString('token is fine', $message);
+        // Measured by actually rotating one: a freshly issued PAT with the right scopes got the
+        // same 429 and the same retry-after, so the budget is per account. Without ruling it out,
+        // "the token is fine" still leaves rotating as the obvious next move -- and it costs a
+        // token for nothing.
+        $this->assertStringContainsString('rotating it will NOT help', $message);
     }
 
     public function test_the_wait_is_read_from_figma_not_guessed(): void

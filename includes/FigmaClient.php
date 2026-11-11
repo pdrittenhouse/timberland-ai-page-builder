@@ -89,16 +89,23 @@ class FigmaClient
             // The wait is READ, never guessed. This message used to say "about a minute", which was
             // my assumption; the real header on this endpoint came back `retry-after: 395785` --
             // **4.6 days** -- with `x-figma-rate-limit-type: high`. The limit is cost-based, and
-            // roughly eight reads of one 3.9 MB file exhausted the token's budget. Telling somebody
-            // to wait a minute when they are locked out until next week is worse than saying
-            // nothing, because they will keep retrying and keep paying for it.
+            // roughly eight reads of one 3.9 MB file exhausted the budget. Telling somebody to wait
+            // a minute when they are locked out until next week is worse than saying nothing,
+            // because they will keep retrying and keep paying for it.
+            //
+            // And the budget is NOT per token -- measured, by rotating one. A freshly issued PAT
+            // with the right scopes got the same 429 and the same retry-after, so the limit is
+            // scoped to the account. Saying only "the token is fine" still leaves rotating as the
+            // obvious thing to try, so the message rules it out explicitly: it is a real action
+            // somebody will otherwise take, and it costs them a token for nothing.
             $retry = (int) wp_remote_retrieve_header($response, 'retry-after');
 
             return new \WP_Error(
                 'figma_rate_limited',
                 sprintf(
-                    'Figma is rate-limiting this token (%s). %s The token itself is fine — this is '
-                    . 'a usage budget, and reading a large file is expensive.',
+                    'Figma is rate-limiting this account (%s). %s The token is fine and rotating it '
+                    . 'will NOT help — this budget is per account, not per token. Reading a large '
+                    . 'file is expensive, so avoid re-reading one you have already read.',
                     (string) wp_remote_retrieve_header($response, 'x-figma-rate-limit-type') !== ''
                         ? 'limit type: ' . wp_remote_retrieve_header($response, 'x-figma-rate-limit-type')
                         : 'no limit type given',
