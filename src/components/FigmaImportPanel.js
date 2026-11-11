@@ -99,6 +99,9 @@ export default function FigmaImportPanel() {
 
             {candidates && candidates.length > 0 && (
                 <>
+                    {/* Said before the click, not after: choosing a page downloads that page's
+                        images into the media library, and an operator should know that is what the
+                        button does. */}
                     <p className="taipb-figma-import__summary">
                         {candidates.length} candidate{candidates.length === 1 ? '' : 's'}
                         {meta?.skipped ? `, ${meta.skipped} smaller item(s) skipped` : ''}
@@ -108,6 +111,9 @@ export default function FigmaImportPanel() {
                         {meta?.truncated
                             ? `. ${meta.truncated} further candidate(s) are not shown — link the page frame directly if yours is missing.`
                             : '.'}
+                        {' '}
+                        Choosing one imports that page&rsquo;s images into your media library, so the
+                        generated page can actually use them.
                     </p>
 
                     {/* Stated plainly, because an operator whose design has changed in Figma needs
@@ -162,7 +168,7 @@ export default function FigmaImportPanel() {
                                     onClick={() => applyFigmaCandidate(candidate)}
                                     disabled={candidate.decomposition.sections.length === 0}
                                 >
-                                    Review this page
+                                    {isInspecting ? 'Importing images…' : 'Review this page'}
                                 </Button>
                             </CardBody>
                         </Card>

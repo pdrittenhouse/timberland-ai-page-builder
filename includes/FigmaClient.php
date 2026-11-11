@@ -195,17 +195,96 @@ class FigmaClient
     }
 
     /**
-     * Fetch the signed preview, with NO token and a hard byte cap.
+     * Every image fill in the file, as `imageRef => signed URL`.
+     *
+     * **The ORIGINAL uploaded assets, not a render.** `/v1/images` rasterises a node, which gives a
+     * flattened picture of a whole band; this endpoint hands back the files a designer actually
+     * placed, which is what a page needs in an image field. Measured on the Natural Rose file: 168
+     * pairs returned, and all 76 `imageRef` values present in the node tree resolve.
+     *
+     * No second node fetch is needed to find the refs -- `fills[].imageRef` is already in the
+     * payload `fetch_node()` returns, so the band projection can carry them for free.
+     *
+     * One call per file, not per image: the URLs are signed and short-lived, so they are fetched
+     * when an import is about to happen rather than cached.
+     *
+     * @return array<string, string>|\WP_Error
+     */
+    public function fetch_asset_urls(FigmaUrl $ref)
+    {
+        if ($this->token === '') {
+            return new \WP_Error('figma_no_token', 'No Figma access token is configured.');
+        }
+
+        $url = sprintf(
+            'https://%s/v1/files/%s/images',
+            self::API_HOST,
+            rawurlencode($ref->file_key())
+        );
+
+        $response = wp_safe_remote_get($url, [
+            'timeout' => $this->timeout,
+            'headers' => ['X-Figma-Token' => $this->token],
+        ]);
+
+        if (is_wp_error($response)) {
+            return $response;
+        }
+
+        $code = (int) wp_remote_retrieve_response_code($response);
+
+        if (429 === $code) {
+            return new \WP_Error(
+                'figma_rate_limited',
+                'Figma is rate-limiting this account. The token is fine and rotating it will NOT '
+                . 'help — this budget is per account, not per token.'
+            );
+        }
+
+        if (200 !== $code) {
+            return new \WP_Error(
+                'figma_api_error',
+                sprintf('Figma returned HTTP %d for the file\'s image list.', $code)
+            );
+        }
+
+        $decoded = json_decode((string) wp_remote_retrieve_body($response), true);
+        $map = $decoded['meta']['images'] ?? null;
+
+        if (!is_array($map)) {
+            return new \WP_Error(
+                'figma_api_bad_json',
+                'Figma returned an image list that could not be read.'
+            );
+        }
+
+        $out = [];
+
+        foreach ($map as $image_ref => $image_url) {
+            if (is_string($image_ref) && is_string($image_url) && '' !== $image_url) {
+                $out[$image_ref] = $image_url;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Fetch a signed Figma image URL, with NO token and a hard byte cap.
+     *
+     * Serves both the frame preview and the original asset downloads -- same hosts, same signature
+     * scheme, same reasons not to send a credential. Public so asset import can reuse these guards
+     * rather than acquire its own copy of them.
      *
      * @return array{bytes: string, content_type: string, url_host: string}|\WP_Error
      */
-    private function fetch_image_bytes(string $image_url)
+    public function fetch_image_bytes(string $image_url, ?int $max_bytes = null)
     {
         $parts = wp_parse_url($image_url);
         $host = strtolower((string) ($parts['host'] ?? ''));
 
         if (strtolower((string) ($parts['scheme'] ?? '')) !== 'https' || $host === '') {
-            return new \WP_Error('figma_image_scheme', 'Figma returned a preview URL that is not https.');
+            return new \WP_Error('figma_image_scheme', 'Figma returned an image URL that is not https.');
         }
 
         $allowed = false;
@@ -220,14 +299,14 @@ class FigmaClient
         }
 
         if (!$allowed) {
-            return new \WP_Error('figma_image_host', 'Figma returned a preview URL from an unexpected host.');
+            return new \WP_Error('figma_image_host', 'Figma returned an image URL from an unexpected host.');
         }
 
         // NO X-Figma-Token here. The signature in the URL is the authorisation, and this host has
         // no business holding an account-wide credential.
         $response = wp_safe_remote_get($image_url, [
             'timeout' => $this->timeout,
-            'headers' => ['Accept' => 'image/png'],
+            'headers' => ['Accept' => 'image/*'],
         ]);
 
         if (is_wp_error($response)) {
@@ -238,15 +317,27 @@ class FigmaClient
 
         // Enforced on what arrived, not only requested. A Content-Length can lie or be absent,
         // and a cap that trusts it is not a cap.
-        if (strlen($body) > self::MAX_IMAGE_BYTES) {
+        //
+        // The caller may raise it, because the two uses are not alike: a PREVIEW is a half-scale
+        // render this plugin asks for and 8 MB is generous, while an ASSET is whatever a designer
+        // uploaded. Measured on the Natural Rose file -- 6 of 24 of the Home page's images are over
+        // 8 MB, and skipping a design's hero photograph is the exact failure importing assets
+        // exists to fix.
+        $cap = $max_bytes ?? self::MAX_IMAGE_BYTES;
+
+        if (strlen($body) > $cap) {
             return new \WP_Error(
                 'figma_image_too_large',
-                sprintf('The Figma preview exceeded the %d byte limit.', self::MAX_IMAGE_BYTES)
+                sprintf(
+                    'The Figma image is %s, over the %s limit.',
+                    size_format(strlen($body)),
+                    size_format($cap)
+                )
             );
         }
 
         if ($body === '') {
-            return new \WP_Error('figma_image_empty', 'The Figma preview came back empty.');
+            return new \WP_Error('figma_image_empty', 'The Figma image came back empty.');
         }
 
         return [

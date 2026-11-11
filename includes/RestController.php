@@ -201,6 +201,25 @@ class RestController
             ],
         ]);
 
+        register_rest_route(self::NAMESPACE, '/figma/import-assets', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_figma_import_assets'],
+            // upload_files, not edit_posts: this is the one route that writes files to the site.
+            'permission_callback' => [$this, 'can_upload'],
+            'args' => [
+                'url' => [
+                    'required' => true,
+                    'type' => 'string',
+                    'sanitize_callback' => static fn($value): string => trim((string) $value),
+                ],
+                'refs' => [
+                    'required' => true,
+                    'type' => 'array',
+                    'items' => ['type' => 'string'],
+                ],
+            ],
+        ]);
+
         register_rest_route(self::NAMESPACE, '/blocks/placeable', [
             'methods' => 'GET',
             'callback' => [$this, 'handle_placeable_blocks'],
@@ -788,6 +807,60 @@ class RestController
                 'error' => $e->getMessage(),
             ], 200);
         }
+    }
+
+    /**
+     * POST /figma/import-assets — bring a frame's own images into the media library.
+     *
+     * The answer to a measured dead end: the fidelity report showed 10 image slots described and 0
+     * set, and that was *unreachable* rather than ignored -- the plan named an image and gave the
+     * model nothing to reference, while an image field needs a URL, a filename or a description.
+     * No prompting fixes that; the asset has to exist locally first.
+     *
+     * Explicit and separate from `/figma/inspect` on purpose. Inspect lists 17 candidate pages for
+     * one file; importing there would drop a whole file's imagery into the library before anyone
+     * had chosen a page.
+     */
+    public function handle_figma_import_assets(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
+    {
+        if (!FigmaCredentials::is_configured()) {
+            return new \WP_Error(
+                'taipb_figma_no_token',
+                'No Figma access token is configured. Add one in the AI Page Builder settings.',
+                ['status' => 400]
+            );
+        }
+
+        $ref = FigmaUrl::parse((string) $request->get_param('url'));
+
+        if (is_wp_error($ref)) {
+            return new \WP_Error($ref->get_error_code(), $ref->get_error_message(), ['status' => 400]);
+        }
+
+        $refs = array_values(array_filter((array) $request->get_param('refs'), 'is_string'));
+
+        if ($refs === []) {
+            return new \WP_Error(
+                'taipb_no_refs',
+                'No image references were supplied. They come from a section\'s `image_refs`.',
+                ['status' => 400]
+            );
+        }
+
+        $result = (new FigmaAssets())->import($ref, $refs);
+
+        if (is_wp_error($result)) {
+            $code = $result->get_error_code();
+            $status = 'figma_rate_limited' === $code ? 429 : ('figma_forbidden' === $code ? 403 : 502);
+
+            return new \WP_Error($code, Redact::credentials($result->get_error_message()), ['status' => $status]);
+        }
+
+        return new \WP_REST_Response($result + [
+            // One map for the caller to use, since "imported" and "reused" are the same thing to a
+            // block tree and only differ in whether this call paid for them.
+            'attachments' => $result['imported'] + $result['reused'],
+        ], 200);
     }
 
     /**
@@ -1465,6 +1538,24 @@ PROMPT;
     public function can_edit(\WP_REST_Request $request): bool
     {
         return current_user_can('edit_posts');
+    }
+
+    /**
+     * Permission: may actually put a file in the media library.
+     *
+     * NOT the same as `can_edit`, and the difference is a real role rather than a hypothetical one:
+     * a **Contributor has `edit_posts` and not `upload_files`**, so it reaches every other route
+     * here and must not be able to cause an upload. Checked separately because importing Figma
+     * assets writes files to the site, which is the one thing this plugin does that is not confined
+     * to post content.
+     *
+     * No application password or token is involved: the import runs inside WordPress in the same
+     * process as the request, calling `wp_upload_bits()` directly, so the capability IS the
+     * authorisation.
+     */
+    public function can_upload(\WP_REST_Request $request): bool
+    {
+        return current_user_can('upload_files');
     }
 
     /**

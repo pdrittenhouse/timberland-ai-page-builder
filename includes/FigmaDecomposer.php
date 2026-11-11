@@ -225,6 +225,14 @@ class FigmaDecomposer
                 $entry['images'] = $images;
             }
 
+            // The refs travel with the section so an import can resolve exactly the assets this
+            // band uses, rather than all 168 in the file.
+            $refs = array_values(array_filter((array) ($group['image_refs'] ?? []), 'is_string'));
+
+            if ($refs !== []) {
+                $entry['image_refs'] = $refs;
+            }
+
             if ($texts !== []) {
                 $entry['texts'] = $texts;
             }

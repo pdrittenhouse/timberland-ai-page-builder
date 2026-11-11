@@ -310,7 +310,7 @@ class FigmaStructure
      * the text of each group carries the rest.
      *
      * @param array<string, mixed> $band
-     * @return array<int, array{count: int, type: string, width: int, height: int, images: int, texts: array<int, string>}>
+     * @return array<int, array{count: int, type: string, width: int, height: int, images: int, image_refs: array<int, string>, texts: array<int, string>}>
      */
     private static function groups(array $band): array
     {
@@ -347,14 +347,31 @@ class FigmaStructure
                     'width' => $w,
                     'height' => $h,
                     'images' => 0,
+                    'image_refs' => [],
                     'texts' => [],
                 ];
             }
 
             ++$buckets[$key]['count'];
 
-            if (self::has_image($child)) {
+            // "This member paints an image" and "we can fetch that image" are DIFFERENT facts, and
+            // counting only the fetchable ones hides the unimportable case. A test caught this:
+            // tying the count to a resolvable ref reported six image tiles as zero. The count stays
+            // the honest observation; the refs are what an import can act on, and a gap between
+            // them is itself worth seeing.
+            if (self::paints_image($child)) {
                 ++$buckets[$key]['images'];
+            }
+
+            $refs = self::image_refs($child);
+
+            if ($refs !== []) {
+                // Union across the group's members, deduped. Six tiles of the same size usually
+                // carry six DIFFERENT photographs, and collapsing them to one would import a sixth
+                // of the design's imagery.
+                $buckets[$key]['image_refs'] = array_values(
+                    array_unique(array_merge($buckets[$key]['image_refs'], $refs))
+                );
             }
 
             // Text from the FIRST member only. In a six-up grid the members differ by their copy,
@@ -369,15 +386,15 @@ class FigmaStructure
     }
 
     /**
-     * Does this subtree paint an image anywhere?
+     * Does this subtree paint an image at all, ref or not?
      *
-     * An image fill is the difference between "a heading and some text" and "a card with a
-     * picture", and 27 of them in the Home frame reached the model as zero. Recursive because the
-     * fill is usually on a rectangle several levels below the thing a person would call the card.
+     * Separate from {@see image_refs} on purpose. An IMAGE fill normally carries an `imageRef`, but
+     * one that does not is still an image the design has and the page is missing -- reporting it as
+     * "no image here" would be the comfortable answer rather than the true one.
      *
      * @param array<string, mixed> $node
      */
-    private static function has_image(array $node, int $depth = 0): bool
+    private static function paints_image(array $node, int $depth = 0): bool
     {
         if ($depth > 8) {
             return false;
@@ -390,12 +407,54 @@ class FigmaStructure
         }
 
         foreach ($node['children'] ?? [] as $child) {
-            if (is_array($child) && self::has_image($child, $depth + 1)) {
+            if (is_array($child) && self::paints_image($child, $depth + 1)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * The image fills in this subtree, as Figma's own `imageRef` values.
+     *
+     * An image fill is the difference between "a heading and some text" and "a card with a picture",
+     * and 27 of them in the Home frame reached the model as zero.
+     *
+     * **Refs, not a boolean.** Knowing an image EXISTS is what the first version reported, and it
+     * left the model nothing it could act on: the fidelity measure then showed 10 image slots
+     * described and 0 set, which turned out to be unreachable rather than ignored -- the plan said
+     * "image" and gave no way to reference one. `fills[].imageRef` is already in the payload
+     * `fetch_node()` returns, so carrying the actual identity costs nothing and is what
+     * `/v1/files/{key}/images` resolves to a downloadable asset.
+     *
+     * Recursive because the fill usually sits on a rectangle several levels below the thing a person
+     * would call the card.
+     *
+     * @param array<string, mixed> $node
+     * @return array<int, string> distinct refs, in document order
+     */
+    private static function image_refs(array $node, int $depth = 0): array
+    {
+        if ($depth > 8) {
+            return [];
+        }
+
+        $refs = [];
+
+        foreach ($node['fills'] ?? [] as $fill) {
+            if (is_array($fill) && ($fill['type'] ?? '') === 'IMAGE' && !empty($fill['imageRef'])) {
+                $refs[] = (string) $fill['imageRef'];
+            }
+        }
+
+        foreach ($node['children'] ?? [] as $child) {
+            if (is_array($child)) {
+                $refs = array_merge($refs, self::image_refs($child, $depth + 1));
+            }
+        }
+
+        return array_values(array_unique($refs));
     }
 
     private static function texts(array $node, int $limit, int $depth = 0): array

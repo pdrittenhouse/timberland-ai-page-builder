@@ -188,8 +188,80 @@ const actions = {
      * what tone to keep. The seed names the frame so the operator can see what it refers to, and
      * the existing prompt box stays editable so they can say the part the design cannot.
      */
+    /**
+     * Bring a chosen page's own images into the media library, and put their attachment IDs into
+     * the plan.
+     *
+     * Separate from choosing the page, and explicit, because this writes files to the site.
+     * `/figma/inspect` lists 17 candidates for one file; importing on inspection would drop a whole
+     * file's imagery into the library before anyone had picked anything.
+     *
+     * Failure is NOT fatal to the plan. A page built with the right blocks and no pictures is worth
+     * more than no page, and the fidelity report will say the images are missing -- which is
+     * exactly the signal it exists to give.
+     */
+    importFigmaAssets(url, decomposition) {
+        return async ({ dispatch }) => {
+            const refs = [];
+
+            (decomposition?.sections || []).forEach((section) => {
+                (section.structure || []).forEach((group) => {
+                    (group.image_refs || []).forEach((ref) => {
+                        if (!refs.includes(ref)) {
+                            refs.push(ref);
+                        }
+                    });
+                });
+            });
+
+            if (refs.length === 0) {
+                return decomposition;
+            }
+
+            let attachments = {};
+
+            try {
+                const res = await apiFetch({
+                    path: '/taipb/v1/figma/import-assets',
+                    method: 'POST',
+                    data: { url, refs },
+                });
+                attachments = res.attachments || {};
+            } catch (e) {
+                dispatch({
+                    type: 'SET_FIGMA_ERROR',
+                    figmaError: {
+                        code: e?.code || 'unknown',
+                        message: `${e?.message || 'Could not import the design\'s images.'} The page can still be built without them.`,
+                    },
+                });
+
+                return decomposition;
+            }
+
+            // Rewrite the plan so each group carries the IDs for its own images, which is what the
+            // prompt's `[IMAGE_FILE]` rule needs. Done here rather than server-side so the operator
+            // reviews the plan they will actually generate from.
+            const next = JSON.parse(JSON.stringify(decomposition));
+
+            (next.sections || []).forEach((section) => {
+                (section.structure || []).forEach((group) => {
+                    const ids = (group.image_refs || [])
+                        .map((ref) => attachments[ref])
+                        .filter((id) => typeof id === 'number');
+
+                    if (ids.length > 0) {
+                        group.image_ids = ids;
+                    }
+                });
+            });
+
+            return next;
+        };
+    },
+
     applyFigmaCandidate(candidate) {
-        return ({ dispatch, select: storeSelect }) => {
+        return async ({ dispatch, select: storeSelect }) => {
             const existing = (storeSelect.getPrompt() || '').trim();
             const name = candidate?.name || 'this frame';
 
@@ -200,7 +272,23 @@ const actions = {
                 );
             }
 
-            dispatch.setDecomposition(candidate.decomposition);
+            // Import this page's images BEFORE the plan goes to review, so the operator confirms
+            // the plan that will actually be generated from -- attachment IDs included. Doing it
+            // after would mean reviewing one plan and generating from another.
+            dispatch({ type: 'SET_INSPECTING_FIGMA', isInspectingFigma: true });
+
+            let plan = candidate.decomposition;
+
+            try {
+                plan = await dispatch.importFigmaAssets(
+                    storeSelect.getFigmaUrl(),
+                    candidate.decomposition
+                );
+            } finally {
+                dispatch({ type: 'SET_INSPECTING_FIGMA', isInspectingFigma: false });
+            }
+
+            dispatch.setDecomposition(plan);
         };
     },
 

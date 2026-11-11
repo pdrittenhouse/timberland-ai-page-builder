@@ -37,6 +37,24 @@ trait WordPressStubs {
             }
         );
 
+        // Formats bytes for an operator-facing message. Stubbed here rather than per-test because
+        // it is a plain WordPress helper that error text in several classes reaches for, and a test
+        // failing on "undefined function" says nothing about the behaviour under test.
+        Functions\when( 'size_format' )->alias(
+            static function ( $bytes, $decimals = 0 ) {
+                $units = array( 'B', 'KB', 'MB', 'GB' );
+                $i     = 0;
+                $bytes = (float) $bytes;
+
+                while ( $bytes >= 1024 && $i < count( $units ) - 1 ) {
+                    $bytes /= 1024;
+                    ++$i;
+                }
+
+                return number_format( $bytes, $decimals ) . ' ' . $units[ $i ];
+            }
+        );
+
         Functions\when( 'wp_parse_args' )->alias(
             static function ( $args, $defaults = array() ): array {
                 return array_merge(

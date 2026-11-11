@@ -85,6 +85,18 @@ class FigmaReview
     private const CACHE_PREFIX = 'taipb_figma_';
 
     /**
+     * Bumped whenever the PROJECTION's shape changes, because the cache key is otherwise blind to
+     * it.
+     *
+     * Caught the hard way: adding `image_refs` to each band left an hour of cached readings in the
+     * old shape, so an asset import found no refs to import and reported success having done
+     * nothing. The file had not changed, so nothing about the key changed either -- and "the data
+     * is fine, the reader is new" is exactly the case a content-addressed key cannot see. A deploy
+     * would have done the same to a real operator.
+     */
+    private const SHAPE_VERSION = 2;
+
+    /**
      * Candidate page designs in the linked node, each with the plan it would produce.
      *
      * @return array{
@@ -176,6 +188,12 @@ class FigmaReview
      */
     private static function cache_key(FigmaUrl $ref, int $depth): string
     {
-        return self::CACHE_PREFIX . md5($ref->file_key() . '|' . $ref->node_id() . '|' . $depth);
+        return self::CACHE_PREFIX . md5(implode('|', [
+            $ref->file_key(),
+            $ref->node_id(),
+            (string) $depth,
+            // The shape of what we store, not just the identity of what we read.
+            'v' . self::SHAPE_VERSION,
+        ]));
     }
 }

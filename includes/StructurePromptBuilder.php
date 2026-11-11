@@ -337,6 +337,20 @@ RULES;
                         $line .= ', image';
                     }
 
+                    // The attachment IDs, once the assets have been imported. This is the whole
+                    // point of importing them: the prompt's image rules ask for an integer
+                    // attachment ID, and until these existed the plan could say "image" and give
+                    // the model nothing to put in the field -- measured as 10 slots described and
+                    // 0 set, which was unreachable rather than ignored.
+                    $ids = array_values(array_filter((array) ($group['image_ids'] ?? []), 'is_numeric'));
+
+                    if ($ids !== []) {
+                        $line .= sprintf(
+                            ' [IMAGE_FILE ids: %s]',
+                            implode(', ', array_map('intval', array_slice($ids, 0, 8)))
+                        );
+                    }
+
                     if (!empty($group['texts']) && is_array($group['texts'])) {
                         $line .= ' "' . implode('" / "', array_slice($group['texts'], 0, 3)) . '"';
                     }
