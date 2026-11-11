@@ -1091,10 +1091,15 @@ class RestController
                 // subsystem keeps getting bitten by is exactly what that avoids.
                 $context_tool = new BlockContextTool($manifest, $budget, new PromptBuilder($manifest));
                 $gap_tool = new GapTool();
+                $token_tool = new DesignTokenTool($budget);
 
-                $dispatch = static function (string $name, array $input) use ($context_tool, $gap_tool): string {
+                $dispatch = static function (string $name, array $input) use ($context_tool, $gap_tool, $token_tool): string {
                     if (GapTool::NAME === $name) {
                         return $gap_tool->dispatch($input);
+                    }
+
+                    if (DesignTokenTool::NAME === $name) {
+                        return $token_tool->dispatch($input);
                     }
 
                     return $context_tool->dispatch($name, $input);
@@ -1103,7 +1108,7 @@ class RestController
                 $api_response = $client->generate_with_tools(
                     $system_prompt,
                     $prompt,
-                    [$context_tool->definition(), $gap_tool->definition()],
+                    [$context_tool->definition(), $gap_tool->definition(), $token_tool->definition()],
                     $dispatch
                 );
             } else {

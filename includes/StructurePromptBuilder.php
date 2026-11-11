@@ -88,6 +88,7 @@ class StructurePromptBuilder
         $sections = [];
         $sections[] = $this->build_rules_section();
         $sections[] = $this->build_tool_catalog($curated);
+        $sections[] = $this->build_vocabulary_section();
         $sections[] = $this->build_nesting_section();
         $sections[] = $this->build_layout_plan_section($decomposition);
 
@@ -98,6 +99,65 @@ class StructurePromptBuilder
         }
 
         return implode("\n\n---\n\n", array_filter($sections));
+    }
+
+    /**
+     * The values a page may style itself with.
+     *
+     * **Added because the absence was measured, not assumed.** Generated pages applied no
+     * background or text colours at all, and the cause was not comprehension: colour fields never
+     * reached the model, and the prompt told it to leave styling alone. Naming the vocabulary is
+     * half of fixing that; the other half is letting those fields through (UC6).
+     *
+     * Costs ~478 tokens and is TOOL-MODE ONLY. The inline path carries a hand-tuned fixed preamble
+     * against a 2,250-token ceiling with ~75 to spare, so adding this there would trip a ratchet
+     * that exists precisely to make such additions deliberate. Tool mode already spends ~4,100 on
+     * the catalogue against a settable budget, so it can afford to say what the colours are.
+     *
+     * Icons are NAMED, 33 of them; a model cannot pick an icon from a count. Utility classes are
+     * not -- 14,252 names is roughly 43,000 tokens, so families are described and the names come
+     * from `get_utility_classes` on demand.
+     */
+    private function build_vocabulary_section(): string
+    {
+        $vocab = (new DesignVocabulary())->summary();
+
+        $lines = ["# DESIGN VOCABULARY\n"];
+        $lines[] = "These are the ONLY values this site defines. Do not invent a colour name, a";
+        $lines[] = "spacing step or an icon: an unrecognised value is dropped silently at render, which";
+        $lines[] = "looks like the design system ignoring you.\n";
+
+        $named = [
+            'Colours (slugs)' => $vocab['colors'],
+            'Gradients' => $vocab['gradients'],
+            'Font sizes' => $vocab['font_sizes'],
+            'Spacing steps' => $vocab['spacing'],
+            'Breakpoints' => $vocab['breakpoints'],
+            'Icons' => $vocab['icons'],
+        ];
+
+        foreach ($named as $label => $values) {
+            if ($values === []) {
+                continue;
+            }
+
+            $lines[] = sprintf('%s: %s', $label, implode(', ', $values));
+        }
+
+        $lines[] = sprintf(
+            "\nUtility classes: %d exist. Families: %s.",
+            $vocab['utility_count'],
+            implode('; ', array_map(
+                static fn(string $prefix, string $what): string => $prefix . '-* ' . $what,
+                array_keys($vocab['utility_families']),
+                array_values($vocab['utility_families'])
+            ))
+        );
+        $lines[] = 'Call `' . DesignTokenTool::NAME . '` to see the exact class names in a family.';
+        $lines[] = 'Prefer a block\'s own fields over a utility class: a field is design-system';
+        $lines[] = 'styling, a utility is an override. Reach for a utility only when no field fits.';
+
+        return implode("\n", $lines) . "\n";
     }
 
     /**

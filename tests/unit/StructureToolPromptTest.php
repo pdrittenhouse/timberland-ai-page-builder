@@ -2,6 +2,7 @@
 
 namespace TimberlandAIPageBuilder\Tests\Unit;
 
+use Brain\Monkey\Functions;
 use PHPUnit\Framework\TestCase;
 use TimberlandAIPageBuilder\Tests\Fixture\ManifestFixture;
 use TimberlandAIPageBuilder\Tests\Fixture\WordPressStubs;
@@ -23,6 +24,19 @@ class StructureToolPromptTest extends TestCase
     protected function setUp(): void
     {
         $this->stubWordPress();
+
+        // Scoped HERE, not to the shared trait, and that distinction cost three unrelated test
+        // failures to learn. `function_exists()` reports TRUE for any function Brain Monkey has
+        // been asked to mock, so stubbing these globally flipped PromptBuilder's lazy
+        // `function_exists('get_template_directory')` guard from false to true for every test in the
+        // suite, which changed whether a schema oracle was built at all and broke three retry tests
+        // that depend on validation outcomes.
+        //
+        // The paths do not exist on purpose: a unit test must not read the live site's build
+        // artifacts, so the vocabulary degrades to empty rather than letting this install's colours
+        // leak into assertions.
+        Functions\when('get_stylesheet_directory')->justReturn('/nonexistent/child-theme');
+        Functions\when('get_template_directory')->justReturn('/nonexistent/parent-theme');
     }
 
     protected function tearDown(): void
