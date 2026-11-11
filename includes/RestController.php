@@ -191,6 +191,13 @@ class RestController
                     'default' => 'page',
                     'sanitize_callback' => 'sanitize_text_field',
                 ],
+                // Optional: when the caller still has the plan, /assemble can say how much of it
+                // survived. Not required, because a caller that only has a tree must still be able
+                // to assemble one.
+                'decomposition' => [
+                    'required' => false,
+                    'type' => 'object',
+                ],
             ],
         ]);
 
@@ -976,10 +983,22 @@ class RestController
                 );
             }
 
-            return new \WP_REST_Response([
+            $response = [
                 'markup' => $markup,
                 'validation' => $validation,
-            ], 200);
+            ];
+
+            // FG4 step 3. Validation says every field NAME is real; it says nothing about whether
+            // the page resembles what was confirmed. Reported beside it, never folded into it: a
+            // page can be perfectly valid and have dropped half the copy, and collapsing the two
+            // would hide exactly that. Only when the caller still has the plan to compare against.
+            $decomposition = $request->get_param('decomposition');
+
+            if (is_array($decomposition) && !empty($decomposition['sections'])) {
+                $response['fidelity'] = FidelityReport::compare($decomposition, $block_tree);
+            }
+
+            return new \WP_REST_Response($response, 200);
         } catch (\Throwable $e) {
             return new \WP_Error('taipb_assemble_error', $e->getMessage(), ['status' => 500]);
         }
