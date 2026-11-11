@@ -42,6 +42,36 @@ class FigmaStructure
      */
     private const MIN_PAGE_WIDTH = 320;
 
+    /**
+     * How long a single text node may be before it is cut.
+     *
+     * Was 90, which cut body copy mid-word -- "made with plants you can under" -- so the model was
+     * matching blocks against a truncated sentence. 90 was cost control from when the payload was
+     * 3.9 MB and the whole budget was 8,000 tokens with ~400 to spare; the payload is now projected
+     * and the budget is settable, so the constraint that justified it is gone. 400 is long enough
+     * for real body copy and still short enough that a pasted essay cannot run away.
+     */
+    private const MAX_TEXT_LENGTH = 400;
+
+    /**
+     * Grouping tolerance, as a fraction of the BAND's width -- see `groups()`.
+     *
+     * Proportional to the band, not to the element. A flat 12px failed on the real file: the six
+     * category tiles measure 585, 570, 573, 585, 572 and 572 px wide because someone nudged them,
+     * so they split into four groups and the plan said "2 repeated + 2 single" for what is plainly
+     * a six-up grid. Scaling the tolerance by the ELEMENT's own size instead is the obvious fix and
+     * is wrong: the divisor then grows with the value, so 1280 and 1728 collapse into one bucket
+     * too. Anchoring to the band's width keeps 3% of 1728 = ~52px, which merges the six tiles and
+     * still separates 1280 from 1728.
+     */
+    private const SIZE_TOLERANCE_RATIO = 0.03;
+
+    /** Floor for the above, so a narrow band does not get a sub-pixel tolerance. */
+    private const MIN_SIZE_TOLERANCE = 8;
+
+    /** A band child smaller than this in either dimension is furniture, not structure. */
+    private const MIN_CHILD_SIZE = 24;
+
     /** Nodes that describe how something is drawn rather than what it is. */
     private const DECORATIVE = ['VECTOR', 'LINE', 'ELLIPSE', 'RECTANGLE', 'STAR', 'POLYGON', 'BOOLEAN_OPERATION'];
 
@@ -186,7 +216,7 @@ class FigmaStructure
      * @param array<string, mixed> $payload
      * @return array{page: string, width: int, height: int, bands: array<int, array<string, mixed>>}|\WP_Error
      */
-    public static function bands(array $payload, string $page_id, int $max_texts = 6)
+    public static function bands(array $payload, string $page_id, int $max_texts = 24)
     {
         $page = self::find($payload, $page_id);
 
@@ -217,9 +247,17 @@ class FigmaStructure
                 'height' => (int) ($box['height'] ?? 0),
                 'y' => (int) ($box['y'] ?? 0),
                 // The band's own text, which is what actually identifies it when the name is
-                // `Frame 19`. Capped, because a product grid can carry fifty strings and the
-                // first few are the heading and the first item -- which is the identifying part.
+                // `Frame 19`. Still capped -- a product grid can carry fifty strings -- but at 24
+                // rather than 6, because 6 meant a six-up grid arrived as one heading.
                 'texts' => $texts,
+                // FG4: what the band is MADE OF, which is the thing a block-matcher actually needs.
+                //
+                // Measured before this existed: the Home frame holds 65 text nodes, 61 nested
+                // frames and 27 image fills, and the plan carried 16 strings and no structure at
+                // all. A 1728x1115 band reached the model as two strings and a height, so it could
+                // not tell a six-up card grid from a split hero from a carousel -- and the output
+                // was about what that input supported.
+                'children' => self::groups($child),
             ];
         }
 
@@ -256,6 +294,110 @@ class FigmaStructure
      * @param array<string, mixed> $node
      * @return array<int, array{text: string, size: int}>
      */
+    /**
+     * A band's direct children, grouped so that repetition is visible.
+     *
+     * **The grouping is the point, not the listing.** "6x group 573x558, each with an image" tells a
+     * block-matcher it is looking at a six-up grid; six separate lines of nearly-identical
+     * dimensions make it infer that, and it should not have to. The prototype for this grouped on
+     * exact dimensions and produced no groups at all on the real file -- the six category tiles
+     * measure 585, 570, 573, 585, 572 and 572 px wide, because a designer nudged them. Hence
+     * {@see SIZE_TOLERANCE}: sizes are rounded to a 12px bucket before comparison.
+     *
+     * Only DIRECT children are walked. Depth is where this would get expensive and stop being a
+     * projection -- the Home frame has 61 nested frames, and describing all of them is the 3.9 MB
+     * payload again. One level answers the question that matters ("what is this band made of") and
+     * the text of each group carries the rest.
+     *
+     * @param array<string, mixed> $band
+     * @return array<int, array{count: int, type: string, width: int, height: int, images: int, texts: array<int, string>}>
+     */
+    private static function groups(array $band): array
+    {
+        $buckets = [];
+        $band_width = (int) ($band['absoluteBoundingBox']['width'] ?? 0);
+        $tolerance = max(self::MIN_SIZE_TOLERANCE, $band_width * self::SIZE_TOLERANCE_RATIO);
+
+        foreach ($band['children'] ?? [] as $child) {
+            if (!is_array($child) || in_array((string) ($child['type'] ?? ''), self::DECORATIVE, true)) {
+                continue;
+            }
+
+            $box = $child['absoluteBoundingBox'] ?? [];
+            $w = (int) ($box['width'] ?? 0);
+            $h = (int) ($box['height'] ?? 0);
+
+            if ($w < self::MIN_CHILD_SIZE || $h < self::MIN_CHILD_SIZE) {
+                continue;
+            }
+
+            // NOT keyed by node type. A designer builds one tile as a GROUP and its neighbour as a
+            // FRAME without meaning anything by it, and including the type split the six category
+            // tiles again after the tolerance was fixed. What a block-matcher needs is "six things
+            // this size, each with an image", and the type contributes nothing to that.
+            $key = implode('|', [
+                (int) round($w / $tolerance),
+                (int) round($h / $tolerance),
+            ]);
+
+            if (!isset($buckets[$key])) {
+                $buckets[$key] = [
+                    'count' => 0,
+                    'type' => strtolower((string) ($child['type'] ?? '')),
+                    'width' => $w,
+                    'height' => $h,
+                    'images' => 0,
+                    'texts' => [],
+                ];
+            }
+
+            ++$buckets[$key]['count'];
+
+            if (self::has_image($child)) {
+                ++$buckets[$key]['images'];
+            }
+
+            // Text from the FIRST member only. In a six-up grid the members differ by their copy,
+            // and repeating all six sets is how a projection turns back into a payload -- the
+            // band's own `texts` already carries the full set for whoever needs it.
+            if ($buckets[$key]['texts'] === []) {
+                $buckets[$key]['texts'] = array_column(self::texts($child, 4), 'text');
+            }
+        }
+
+        return array_values($buckets);
+    }
+
+    /**
+     * Does this subtree paint an image anywhere?
+     *
+     * An image fill is the difference between "a heading and some text" and "a card with a
+     * picture", and 27 of them in the Home frame reached the model as zero. Recursive because the
+     * fill is usually on a rectangle several levels below the thing a person would call the card.
+     *
+     * @param array<string, mixed> $node
+     */
+    private static function has_image(array $node, int $depth = 0): bool
+    {
+        if ($depth > 8) {
+            return false;
+        }
+
+        foreach ($node['fills'] ?? [] as $fill) {
+            if (is_array($fill) && ($fill['type'] ?? '') === 'IMAGE') {
+                return true;
+            }
+        }
+
+        foreach ($node['children'] ?? [] as $child) {
+            if (is_array($child) && self::has_image($child, $depth + 1)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static function texts(array $node, int $limit, int $depth = 0): array
     {
         $collected = [];
@@ -338,7 +480,7 @@ class FigmaStructure
 
             if ($text !== '') {
                 $out[] = [
-                    'text' => mb_substr($text, 0, 90),
+                    'text' => mb_substr($text, 0, self::MAX_TEXT_LENGTH),
                     'size' => (int) round((float) ($node['style']['fontSize'] ?? 0)),
                     'y' => (float) ($node['absoluteBoundingBox']['y'] ?? 0),
                 ];

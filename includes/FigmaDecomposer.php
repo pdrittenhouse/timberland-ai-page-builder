@@ -49,6 +49,15 @@ class FigmaDecomposer
                 'pattern_id' => '',
                 'content' => self::content($texts),
                 /**
+                 * FG4: what the band is made of, carried verbatim from `FigmaStructure::groups()`.
+                 *
+                 * Without this a 1728x1115 band reached the model as two strings and a height, and
+                 * it could not tell a six-up card grid from a split hero. The shape is deliberately
+                 * flat and small -- one entry per repeated group, not per element -- so it stays a
+                 * projection. Measured: ~330 extra tokens for a six-band page.
+                 */
+                'structure' => self::structure($band),
+                /**
                  * FG3 provenance, per section rather than per page: a band is what becomes a
                  * block, so the node id has to travel at band granularity or the trail breaks the
                  * moment the operator reorders anything.
@@ -110,7 +119,120 @@ class FigmaDecomposer
             $parts[] = 'no text (likely an image or decorative band)';
         }
 
+        // FG4: the composition, summarised in the intent line itself.
+        //
+        // The structure also travels as its own key, but the intent is the line an OPERATOR reads
+        // in the review panel, and "6 repeated elements with images" is the difference between
+        // confirming a plan and not knowing what you are confirming. Still describing, not
+        // interpreting -- it says "6 repeated" rather than "a card grid", because which block that
+        // becomes is the model's judgement with the catalogue in front of it.
+        $shape = self::shape($band);
+
+        if ($shape !== '') {
+            $parts[] = $shape;
+        }
+
         return implode(', ', $parts);
+    }
+
+    /**
+     * One clause describing how the band is laid out.
+     *
+     * Deliberately counts rather than names. "6 repeated elements, each with an image" is an
+     * observation; "a card grid" is a block choice, and making it here would move matching out of
+     * the one place that can see the catalogue.
+     *
+     * @param array<string, mixed> $band
+     */
+    private static function shape(array $band): string
+    {
+        $repeated = 0;
+        $repeated_images = 0;
+        $singles = 0;
+        $single_images = 0;
+
+        foreach ($band['children'] ?? [] as $group) {
+            if (!is_array($group)) {
+                continue;
+            }
+
+            $count = (int) ($group['count'] ?? 1);
+
+            if ($count > 1) {
+                $repeated = max($repeated, $count);
+                $repeated_images += (int) ($group['images'] ?? 0);
+            } else {
+                ++$singles;
+                $single_images += (int) ($group['images'] ?? 0);
+            }
+        }
+
+        $parts = [];
+
+        if ($repeated > 1) {
+            $parts[] = sprintf(
+                '%d repeated elements%s',
+                $repeated,
+                $repeated_images > 0 ? ' (with images)' : ''
+            );
+        }
+
+        if ($singles > 0) {
+            $parts[] = sprintf(
+                '%d single element%s%s',
+                $singles,
+                1 === $singles ? '' : 's',
+                $single_images > 0 ? ' (with images)' : ''
+            );
+        }
+
+        return implode(' + ', $parts);
+    }
+
+    /**
+     * The band's composition, as the model will read it.
+     *
+     * Passed through rather than re-derived: `FigmaStructure::groups()` already did the grouping
+     * and the image detection, and a second implementation here is the duplication this subsystem
+     * has been bitten by four times. Entries with neither an image nor any text are dropped -- a
+     * sized rectangle with no content tells a block-matcher nothing and costs tokens to say so.
+     *
+     * @param array<string, mixed> $band
+     * @return array<int, array<string, mixed>>
+     */
+    private static function structure(array $band): array
+    {
+        $out = [];
+
+        foreach ($band['children'] ?? [] as $group) {
+            if (!is_array($group)) {
+                continue;
+            }
+
+            $texts = array_values(array_filter((array) ($group['texts'] ?? [])));
+            $images = (int) ($group['images'] ?? 0);
+
+            if ($texts === [] && $images === 0) {
+                continue;
+            }
+
+            $entry = [
+                'count' => (int) ($group['count'] ?? 1),
+                'size' => sprintf('%dx%d', (int) ($group['width'] ?? 0), (int) ($group['height'] ?? 0)),
+            ];
+
+            if ($images > 0) {
+                $entry['images'] = $images;
+            }
+
+            if ($texts !== []) {
+                $entry['texts'] = $texts;
+            }
+
+            $out[] = $entry;
+        }
+
+        return $out;
     }
 
     /**

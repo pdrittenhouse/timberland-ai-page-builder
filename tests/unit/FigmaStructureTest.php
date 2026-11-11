@@ -225,12 +225,27 @@ class FigmaStructureTest extends TestCase
         $reduced = strlen((string) json_encode(FigmaStructure::bands($payload, $home['id'])));
         $rawHome = strlen((string) json_encode($payload));
 
-        // The point of the class. On the full file this is ~2,000:1; even on the trimmed fixture
-        // it must be a large fraction smaller, or the output cannot reach a prompt.
+        // Asserted as an ABSOLUTE size, not as a ratio to the fixture.
+        //
+        // This was `$reduced < $rawHome / 10`, and FG4 broke it legitimately: carrying each band's
+        // composition and un-clipped copy took the projection from ~4.5 KB to ~7.4 KB, so the ratio
+        // fell under 10x and the test failed for the right reason with the wrong message.
+        //
+        // The ratio was never the real property anyway. It is an artifact of how much the fixture
+        // was trimmed -- the full file reduces ~2,000:1 and the trimmed one cannot, no matter how
+        // good the projection is. What has to hold is that ONE PAGE FITS A PROMPT, which is an
+        // absolute number in tokens, and it does not drift when the fixture is re-cut.
+        //
+        // Measured 2026-11-11 on the real file: 719 tokens for the Home page's decomposition
+        // against a settable budget whose default is 16,000. 3,000 is ~4x the measured figure --
+        // room for a denser page, tight enough to catch a projection that has stopped projecting.
         $this->assertLessThan(
-            $rawHome / 10,
-            $reduced,
-            'a reduction under 10x would not fit the token budget'
+            3000,
+            (int) ceil($reduced / 4),
+            'one page of projection must fit a prompt; this looks like a payload, not a projection'
         );
+
+        // And it must still be a real reduction, just not a ratio pinned to the fixture's trim.
+        $this->assertLessThan($rawHome, $reduced);
     }
 }

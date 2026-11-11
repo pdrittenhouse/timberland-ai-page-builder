@@ -310,6 +310,41 @@ RULES;
                 }
             }
 
+            /*
+             * FG4 -- what the band is MADE OF, when the plan carries it.
+             *
+             * A Figma-derived plan knows a band holds six repeated elements each with an image; a
+             * prompt-derived one does not, so this is emitted only when present rather than being a
+             * required key. One compact line per group, because the shape ("6x 573x558, image") is
+             * the whole signal -- the model does not need coordinates to tell a six-up grid from a
+             * split hero, it needs to know there are six of them.
+             *
+             * Before this existed the Home frame's 61 nested frames and 27 image fills reached the
+             * model as nothing at all, and a 1728x1115 band arrived as two strings and a height.
+             */
+            if (!empty($section['structure']) && is_array($section['structure'])) {
+                $output .= "  composed of:\n";
+
+                foreach ($section['structure'] as $group) {
+                    if (!is_array($group)) {
+                        continue;
+                    }
+
+                    $count = (int) ($group['count'] ?? 1);
+                    $line = sprintf('%s%s', $count > 1 ? $count . 'x ' : '', (string) ($group['size'] ?? ''));
+
+                    if (!empty($group['images'])) {
+                        $line .= ', image';
+                    }
+
+                    if (!empty($group['texts']) && is_array($group['texts'])) {
+                        $line .= ' "' . implode('" / "', array_slice($group['texts'], 0, 3)) . '"';
+                    }
+
+                    $output .= "    - {$line}\n";
+                }
+            }
+
             $output .= "\n";
         }
 
