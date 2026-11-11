@@ -829,13 +829,59 @@ class RestController
             $store = Plugin::get_manifest_store();
             $manifest = $store->get();
 
-            // Build the simplified structure prompt
             $prompt_builder = new StructurePromptBuilder($manifest);
-            $system_prompt = $prompt_builder->build($prompt, $decomposition, $use_patterns);
-
-            // Call LLM
             $client = LLMClientFactory::create($model);
-            $api_response = $client->generate($system_prompt, $prompt);
+
+            // Tool mode, matching what MarkupGenerator already does for direct mode.
+            //
+            // The alternative is `build()`, which keyword-scores the operator's prose to decide
+            // which blocks to describe -- and measured against the real manifest, a Figma-derived
+            // prompt scored 6 blocks of 48 with no content block among them, so the model invented
+            // field names on the structural blocks it had been given. Pattern-seeded calls stay on
+            // the inline path: a selected pattern already names its blocks, so there is nothing to
+            // choose and the catalogue would be overhead.
+            $settings = Plugin::get_settings();
+            $use_tools = 'tools' === ($settings['context_mode'] ?? 'tools') && [] === $use_patterns;
+
+            if ($use_tools) {
+                $budget = new PromptBudget([
+                    'post_type' => $request->get_param('post_type') ?? 'page',
+                    'prompt' => $prompt,
+                ]);
+
+                $system_prompt = $prompt_builder->build_for_tools(
+                    $prompt,
+                    $decomposition,
+                    (new CuratedContext())->selection_index()
+                );
+
+                $budget->charge('system prompt', $system_prompt);
+
+                // BlockContextTool serves PromptBuilder::describe_block(), so the field text a
+                // structure call sees is byte-identical to what a direct generation sees. Two
+                // prompts, one definition of what a block looks like -- the duplication this
+                // subsystem keeps getting bitten by is exactly what that avoids.
+                $context_tool = new BlockContextTool($manifest, $budget, new PromptBuilder($manifest));
+                $gap_tool = new GapTool();
+
+                $dispatch = static function (string $name, array $input) use ($context_tool, $gap_tool): string {
+                    if (GapTool::NAME === $name) {
+                        return $gap_tool->dispatch($input);
+                    }
+
+                    return $context_tool->dispatch($name, $input);
+                };
+
+                $api_response = $client->generate_with_tools(
+                    $system_prompt,
+                    $prompt,
+                    [$context_tool->definition(), $gap_tool->definition()],
+                    $dispatch
+                );
+            } else {
+                $system_prompt = $prompt_builder->build($prompt, $decomposition, $use_patterns);
+                $api_response = $client->generate($system_prompt, $prompt);
+            }
 
             // Parse the JSON block tree from the response
             $block_tree = $this->parse_block_tree($api_response['content']);
@@ -873,7 +919,15 @@ class RestController
                     'model' => $api_response['model'],
                     'input_tokens' => $api_response['input_tokens'],
                     'output_tokens' => $api_response['output_tokens'],
+                    // Surfaced so a caller can see the tool loop actually ran, and what the model
+                    // could not express. A silent gap is the failure this reporting exists to stop.
+                    'tool_turns' => $api_response['tool_turns'] ?? 0,
+                    'cache_read_tokens' => $api_response['cache_read_tokens'] ?? 0,
+                    'cache_write_tokens' => $api_response['cache_write_tokens'] ?? 0,
                 ],
+                'blocks_served' => $use_tools ? $context_tool->served() : [],
+                'blocks_unknown' => $use_tools ? $context_tool->unknown() : [],
+                'blocks_withheld' => $use_tools ? $context_tool->withheld() : [],
             ], 200);
         } catch (\RuntimeException $e) {
             $status = str_contains($e->getMessage(), 'rate limit') ? 429 : 500;

@@ -58,6 +58,108 @@ class StructurePromptBuilder
     }
 
     /**
+     * The tool-mode system prompt: every block by name, no field lists.
+     *
+     * **Why this exists, measured.** `build()` picks which blocks to describe by keyword-scoring
+     * the operator's prose, and against the real 48-block manifest a Figma-derived prompt scored
+     * **6 blocks, none of which could hold content** -- so the model invented field names on the
+     * structural blocks it had. Three separate defects in that scorer have been fixed and the
+     * number barely moved, because the approach is the problem: a Figma prompt describes
+     * provenance, not content, and any keyword rule is one accidental substring from starving the
+     * catalogue again.
+     *
+     * The field lists are what made selection seem necessary: 14,972 fields across 48 blocks, about
+     * 312 each, or roughly 149,500 tokens to inline them all. The names alone are ~1,400 -- one
+     * percent. So every block is named here and the detail is fetched on demand through
+     * {@see BlockContextTool}, which is what `MarkupGenerator` already does for direct mode. There
+     * is then no selection step to get wrong.
+     *
+     * **The catalogue is built from the MANIFEST, not from the curated index.** The curated index
+     * covers 41 of 48 blocks, and the seven it omits include `card`, `card-grid`'s sibling
+     * `hero-unit`, `jumbotron`, `button` and `image` -- the content blocks a page is mostly made
+     * of. Listing only curated entries would reintroduce the same starvation one layer down, and
+     * would make the prompt's claim that these are the only blocks that exist false.
+     *
+     * @param array<string, mixed>                       $decomposition the confirmed layout plan
+     * @param array<string, array{best_for: string, avoid_when: string}> $curated keyed by BARE slug
+     */
+    public function build_for_tools(string $user_prompt, array $decomposition, array $curated = []): string
+    {
+        $sections = [];
+        $sections[] = $this->build_rules_section();
+        $sections[] = $this->build_tool_catalog($curated);
+        $sections[] = $this->build_nesting_section();
+        $sections[] = $this->build_layout_plan_section($decomposition);
+
+        $custom = $this->build_custom_prompt_section();
+
+        if ($custom) {
+            $sections[] = $custom;
+        }
+
+        return implode("\n\n---\n\n", array_filter($sections));
+    }
+
+    /**
+     * Every block the manifest has, one line each.
+     *
+     * Ordered by the manifest so the text is byte-identical between calls with the same manifest,
+     * which is what lets the prefix cache. Curated guidance is preferred where it exists because it
+     * says what a block is FOR; the manifest description is the fallback, and the slug alone is the
+     * last resort -- a named block with no description is still choosable, whereas an omitted one
+     * is not.
+     *
+     * @param array<string, array{best_for: string, avoid_when: string}> $curated keyed by bare slug
+     */
+    private function build_tool_catalog(array $curated): string
+    {
+        $blocks = $this->manifest['blocks'] ?? [];
+
+        $out = "# BLOCK CATALOGUE\n\n";
+        $out .= "Every block that exists, with what it is for. There are no others.\n";
+        $out .= "You do NOT yet know their field names. Call `" . BlockContextTool::NAME . "` with\n";
+        $out .= "every block you intend to use, in ONE call, before writing any block tree.\n";
+        $out .= "Field names are never guessable: a plausible name that is not in a block's field\n";
+        $out .= "list is rejected by validation, and the value is lost.\n\n";
+
+        foreach ($blocks as $slug => $block) {
+            $bare = str_replace('acf/', '', $slug);
+            $guide = $curated[$bare] ?? $curated[$slug] ?? [];
+
+            $out .= "- `{$slug}`";
+            $out .= ($block['is_container'] ?? false) ? ' (container)' : ' (leaf)';
+
+            $best_for = trim((string) ($guide['best_for'] ?? ''));
+            $description = trim((string) ($block['description'] ?? ''));
+
+            if ('' !== $best_for) {
+                $out .= " — {$best_for}";
+            } elseif ('' !== $description) {
+                $out .= " — {$description}";
+            }
+
+            if ('' !== trim((string) ($guide['avoid_when'] ?? ''))) {
+                $out .= ' AVOID: ' . trim((string) $guide['avoid_when']);
+            }
+
+            // A parent restriction is a placement rule, so it belongs with the name rather than in
+            // the field detail -- it decides whether the block is a candidate at all.
+            if (!empty($block['parent'])) {
+                $out .= ' [only inside ' . implode(', ', (array) $block['parent']) . ']';
+            }
+
+            $out .= "\n";
+        }
+
+        $out .= "\nIf a section needs something no block above can express, call `" . GapTool::NAME . "`\n";
+        $out .= "instead of substituting the nearest block, then build the parts that ARE\n";
+        $out .= "expressible. A reported gap beside a partial page is useful; a page that silently\n";
+        $out .= "approximates the design is not.\n";
+
+        return $out;
+    }
+
+    /**
      * Build custom system prompt section from site settings.
      */
     private function build_custom_prompt_section(): string
