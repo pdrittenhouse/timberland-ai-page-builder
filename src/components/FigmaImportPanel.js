@@ -115,6 +115,26 @@ export default function FigmaImportPanel() {
                             : '.'}
                     </p>
 
+                    {/* Stated plainly, because an operator whose design has changed in Figma needs
+                        to tell "this reading is up to an hour old" from "the extractor misread my
+                        file". Re-reading is a real cost: Figma's limit here is cost-based and one
+                        measured lockout carried retry-after: 4.6 days, so this is offered rather
+                        than done automatically. */}
+                    {meta?.cached && (
+                        <Notice status="info" isDismissible={false}>
+                            Showing a saved reading of this frame.{' '}
+                            <Button
+                                variant="link"
+                                onClick={() => inspectFigma(trimmed, depth, true)}
+                                disabled={isInspecting}
+                            >
+                                Read it again from Figma
+                            </Button>{' '}
+                            — only if the design has changed, as Figma limits how often a large file
+                            can be read.
+                        </Notice>
+                    )}
+
                     {candidates.map((candidate) => (
                         <Card key={candidate.id} size="small" className="taipb-figma-candidate">
                             <CardBody>

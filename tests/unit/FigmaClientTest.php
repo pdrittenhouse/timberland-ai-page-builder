@@ -128,6 +128,60 @@ class FigmaClientTest extends TestCase
         $this->assertStringContainsString('token itself is fine', $message);
     }
 
+    public function test_the_wait_is_read_from_figma_not_guessed(): void
+    {
+        // These are the REAL headers this endpoint returned on 2026-11-10. The message used to say
+        // "wait about a minute", which was my assumption; the truth was 4.6 days. Telling somebody
+        // to retry in a minute when they are locked out until next week is worse than saying
+        // nothing, because they keep retrying and keep paying a cost-based limit.
+        $this->stubTransport([[
+            'code' => 429,
+            'body' => '{"status":429,"err":"Rate limit exceeded"}',
+            'headers' => ['retry-after' => '395785', 'x-figma-rate-limit-type' => 'high'],
+        ]]);
+
+        $error = (new FigmaClient('figd_testtoken_longenough'))->fetch_node($this->ref());
+
+        $this->assertSame('figma_rate_limited', $error->get_error_code());
+        $this->assertStringContainsString('4.6 days', $error->get_error_message());
+        $this->assertStringContainsString('high', $error->get_error_message());
+        // Carried as data too, so a caller can act on it without parsing prose.
+        $this->assertSame(395785, $error->get_error_data()['retry_after']);
+    }
+
+    public function test_a_missing_retry_after_says_so_rather_than_inventing_one(): void
+    {
+        $this->stubTransport([['code' => 429, 'body' => '']]);
+
+        $message = (new FigmaClient('figd_testtoken_longenough'))->fetch_node($this->ref())->get_error_message();
+
+        $this->assertStringContainsString('did not say how long', $message);
+        $this->assertStringNotContainsString('minute', $message);
+    }
+
+    /**
+     * @dataProvider waits
+     */
+    public function test_the_wait_is_phrased_in_units_a_person_acts_on(int $seconds, string $expected): void
+    {
+        $this->stubTransport([['code' => 429, 'body' => '', 'headers' => ['retry-after' => (string) $seconds]]]);
+
+        $message = (new FigmaClient('figd_testtoken_longenough'))->fetch_node($this->ref())->get_error_message();
+
+        $this->assertStringContainsString($expected, $message);
+    }
+
+    /** @return array<string, array{0: int, 1: string}> */
+    public static function waits(): array
+    {
+        return [
+            'seconds stay seconds' => [45, '45 seconds'],
+            'minutes once it is minutes' => [600, '10 minutes'],
+            'hours once it is hours' => [10800, '3 hours'],
+            'the measured lockout' => [395785, '4.6 days'],
+        ];
+    }
+
     public function test_the_preview_is_requested_at_half_scale(): void
     {
         $this->stubTransport([

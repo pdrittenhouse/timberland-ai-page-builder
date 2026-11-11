@@ -17,11 +17,21 @@ if (!defined('ABSPATH')) {
  *
  * **Everything in one response, deliberately.** The obvious design is "list the candidates, then
  * fetch the one the operator picked", and it is wrong twice over. The file is one metered,
- * rate-limited, multi-megabyte fetch, so a second request either pays for it again or needs a cache
- * of a 3.9 MB payload to invalidate. And the operator *will* switch pages -- that is what reviewing
+ * rate-limited, multi-megabyte fetch, and the operator *will* switch pages -- that is what reviewing
  * is -- so the second request is the common case, not the exception. Deriving every candidate's
- * decomposition from the single fetched tree costs local CPU and ~36 KB of JSON, and makes page
- * switching free and stateless.
+ * decomposition from the single fetched tree costs local CPU and ~26 KB of JSON, and makes page
+ * switching free.
+ *
+ * **And the derived result is cached, which the first version argued was unnecessary.** That
+ * argument was "one fetch per inspection, nothing to invalidate", and it was reasoning about a
+ * single session. Then the real 429 arrived carrying `retry-after: 395785` -- **4.6 days** -- with
+ * `x-figma-rate-limit-type: high`. The limit is cost-based, roughly eight reads of one 3.9 MB file
+ * exhausted the budget, and the lockout is measured in days rather than the minute I had assumed.
+ * At that price the constraint is not "do not fetch twice in one session", it is "do not fetch the
+ * same file twice at all" -- and without a cache, re-pasting the same link, reopening the editor or
+ * a second person reviewing the same design each pays again and deepens the lockout. So the
+ * PROJECTION is cached (~26 KB), never the 3.9 MB payload, keyed by file + node + depth and
+ * independent of which token fetched it, because the file's content does not depend on that.
  *
  * **Depth is reported, never silently chosen.** `FigmaStructure::pages()` descends, and how far
  * down the page designs sit is a property of the file. The deeper levels surface frame/child pairs
@@ -63,6 +73,18 @@ class FigmaReview
     public const MAX_DEPTH = 4;
 
     /**
+     * How long a derived projection stays usable.
+     *
+     * An hour is a compromise between the two real costs. Too short and an operator reviewing a
+     * handful of pages re-reads the file and pays the cost-based limit again; too long and a
+     * designer's update is invisible with no obvious reason why. `$refresh` exists for the second
+     * case, so the TTL only has to cover an ordinary review session.
+     */
+    public const CACHE_TTL = 3600;
+
+    private const CACHE_PREFIX = 'taipb_figma_';
+
+    /**
      * Candidate page designs in the linked node, each with the plan it would produce.
      *
      * @return array{
@@ -72,17 +94,38 @@ class FigmaReview
      *     depth: int,
      *     skipped: int,
      *     truncated: int,
-     *     candidates: array<int, array<string, mixed>>
+     *     candidates: array<int, array<string, mixed>>,
+     *     cached: bool
      * }|\WP_Error
      */
-    public static function inspect(FigmaUrl $ref, int $depth = self::DEFAULT_DEPTH, ?FigmaClient $client = null)
-    {
+    public static function inspect(
+        FigmaUrl $ref,
+        int $depth = self::DEFAULT_DEPTH,
+        ?FigmaClient $client = null,
+        bool $refresh = false
+    ) {
         $depth = max(0, min(self::MAX_DEPTH, $depth));
         $client = $client ?? new FigmaClient();
+        $cache_key = self::cache_key($ref, $depth);
+
+        if (!$refresh) {
+            $cached = get_transient($cache_key);
+
+            if (is_array($cached)) {
+                // Flagged, not disguised. An operator looking at a design that does not match what
+                // they see in Figma needs to be able to tell "this is an hour old" from "the
+                // extractor misread it", and those two look identical without this.
+                $cached['cached'] = true;
+
+                return $cached;
+            }
+        }
 
         $payload = $client->fetch_node($ref);
 
         if (is_wp_error($payload)) {
+            // Failures are NOT cached. A 429 in particular must not be: the operator may fix it
+            // with a different token, and a cached refusal would outlive the cause.
             return $payload;
         }
 
@@ -104,7 +147,7 @@ class FigmaReview
             ];
         }
 
-        return [
+        $result = [
             'file' => $ref->file_key(),
             'node' => $ref->node_id(),
             'source' => $found['source'],
@@ -114,6 +157,25 @@ class FigmaReview
             'skipped' => $found['skipped'],
             'truncated' => $found['truncated'],
             'candidates' => $candidates,
+            'cached' => false,
         ];
+
+        set_transient($cache_key, $result, self::CACHE_TTL);
+
+        return $result;
+    }
+
+    /**
+     * Cache identity: the file, the frame and how deep we looked.
+     *
+     * Deliberately NOT keyed by token. The projection describes the file's contents, which do not
+     * depend on whose token read them -- keying by token would make a second reviewer, or the same
+     * person after a token rotation, pay the cost-based limit again for a byte-identical answer.
+     * Hashed because a file key plus a node id plus a prefix can exceed the 172-character limit on
+     * an option name, and a silently truncated key collides.
+     */
+    private static function cache_key(FigmaUrl $ref, int $depth): string
+    {
+        return self::CACHE_PREFIX . md5($ref->file_key() . '|' . $ref->node_id() . '|' . $depth);
     }
 }

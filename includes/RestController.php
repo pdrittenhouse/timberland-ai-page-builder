@@ -219,6 +219,11 @@ class RestController
                     'default' => FigmaReview::DEFAULT_DEPTH,
                     'sanitize_callback' => 'absint',
                 ],
+                'refresh' => [
+                    'required' => false,
+                    'type' => 'boolean',
+                    'default' => false,
+                ],
             ],
         ]);
 
@@ -774,7 +779,12 @@ class RestController
             return new \WP_Error($ref->get_error_code(), $ref->get_error_message(), ['status' => 400]);
         }
 
-        $result = FigmaReview::inspect($ref, (int) $request->get_param('depth'));
+        $result = FigmaReview::inspect(
+            $ref,
+            (int) $request->get_param('depth'),
+            null,
+            (bool) $request->get_param('refresh')
+        );
 
         if (is_wp_error($result)) {
             // Rate limiting is not a bad gateway. 429 is the one failure here the caller should

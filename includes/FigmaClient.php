@@ -83,14 +83,30 @@ class FigmaClient
 
         if ($code === 429) {
             // Distinguished from every other non-200 because the operator's correct response is
-            // different: wait, do not re-enter the token. Measured -- five inspections of one file
-            // inside a minute is enough to hit it, so this is the ordinary path during a review
-            // session, not an edge case. Folded into `figma_api_error` it reads as a dead token,
-            // which sends somebody to regenerate a PAT that was working fine.
+            // different: wait, do not re-enter the token. Folded into `figma_api_error` it reads as
+            // a dead token, which sends somebody to regenerate a PAT that was working fine.
+            //
+            // The wait is READ, never guessed. This message used to say "about a minute", which was
+            // my assumption; the real header on this endpoint came back `retry-after: 395785` --
+            // **4.6 days** -- with `x-figma-rate-limit-type: high`. The limit is cost-based, and
+            // roughly eight reads of one 3.9 MB file exhausted the token's budget. Telling somebody
+            // to wait a minute when they are locked out until next week is worse than saying
+            // nothing, because they will keep retrying and keep paying for it.
+            $retry = (int) wp_remote_retrieve_header($response, 'retry-after');
+
             return new \WP_Error(
                 'figma_rate_limited',
-                'Figma is rate-limiting this token. Wait about a minute and try again '
-                . '— the token itself is fine.'
+                sprintf(
+                    'Figma is rate-limiting this token (%s). %s The token itself is fine — this is '
+                    . 'a usage budget, and reading a large file is expensive.',
+                    (string) wp_remote_retrieve_header($response, 'x-figma-rate-limit-type') !== ''
+                        ? 'limit type: ' . wp_remote_retrieve_header($response, 'x-figma-rate-limit-type')
+                        : 'no limit type given',
+                    $retry > 0
+                        ? 'Figma says to retry in ' . self::humanise_wait($retry) . '.'
+                        : 'Figma did not say how long to wait.'
+                ),
+                ['retry_after' => $retry]
             );
         }
 
@@ -231,5 +247,28 @@ class FigmaClient
             'content_type' => (string) wp_remote_retrieve_header($response, 'content-type'),
             'url_host' => $host,
         ];
+    }
+
+    /**
+     * Seconds to something an operator can act on.
+     *
+     * Blunt on purpose: "395785 seconds" and "4.6 days" are the same fact, but only one of them
+     * stops somebody retrying in a loop.
+     */
+    private static function humanise_wait(int $seconds): string
+    {
+        if ($seconds < 120) {
+            return $seconds . ' second' . (1 === $seconds ? '' : 's');
+        }
+
+        if ($seconds < 7200) {
+            return (int) round($seconds / 60) . ' minutes';
+        }
+
+        if ($seconds < 172800) {
+            return (int) round($seconds / 3600) . ' hours';
+        }
+
+        return round($seconds / 86400, 1) . ' days';
     }
 }

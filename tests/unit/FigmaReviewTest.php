@@ -21,9 +21,22 @@ class FigmaReviewTest extends TestCase
 {
     use WordPressStubs;
 
+    /** @var array<string, mixed> in-memory stand-in for the transient store */
+    private array $transients = [];
+
     protected function setUp(): void
     {
         $this->stubWordPress();
+        $this->transients = [];
+
+        // A real store, not a no-op. Stubbing `get_transient` to always miss would make every
+        // caching assertion below pass vacuously -- the cache would simply never be consulted.
+        Functions\when('get_transient')->alias(fn(string $k) => $this->transients[$k] ?? false);
+        Functions\when('set_transient')->alias(function (string $k, $v): bool {
+            $this->transients[$k] = $v;
+
+            return true;
+        });
 
         Functions\when('wp_parse_url')->alias(static fn(string $u, int $c = -1) => parse_url($u, $c));
         Functions\when('wp_parse_str')->alias(static function (string $s, &$r): void {
@@ -48,6 +61,32 @@ class FigmaReviewTest extends TestCase
         $this->assertNotInstanceOf(\WP_Error::class, $ref);
 
         return $ref;
+    }
+
+    /** A client that reports how many times it was actually asked to fetch. */
+    private function countingClient(string $token = 'figd_stub'): FigmaClient
+    {
+        $payload = json_decode(
+            (string) file_get_contents(__DIR__ . '/../Fixture/figma/canvas-nodes.json'),
+            true
+        );
+
+        return new class ($payload, $token) extends FigmaClient {
+            public int $calls = 0;
+
+            /** @param array<string, mixed> $payload */
+            public function __construct(private array $payload, string $token)
+            {
+                parent::__construct($token);
+            }
+
+            public function fetch_node(FigmaUrl $ref)
+            {
+                ++$this->calls;
+
+                return $this->payload;
+            }
+        };
     }
 
     private function client(): FigmaClient
@@ -165,6 +204,91 @@ class FigmaReviewTest extends TestCase
         foreach ($result['candidates'] as $candidate) {
             $this->assertArrayHasKey('parent', $candidate);
         }
+    }
+
+    public function test_the_same_frame_is_not_read_from_figma_twice(): void
+    {
+        // This is the assertion the first version did not have, and the cost of not having it is
+        // not hypothetical: the measured 429 on this endpoint carried `retry-after: 395785`
+        // (4.6 days) with `x-figma-rate-limit-type: high`. Re-reading a file an operator already
+        // read is how a review session spends a budget it cannot get back.
+        $client = $this->countingClient();
+
+        $first = FigmaReview::inspect($this->ref(), 0, $client);
+        $second = FigmaReview::inspect($this->ref(), 0, $client);
+
+        $this->assertSame(1, $client->calls, 'the second inspection must come from the cache');
+        $this->assertFalse($first['cached']);
+        $this->assertTrue($second['cached'], 'a cached reading must say so');
+        $this->assertEquals($first['candidates'], $second['candidates']);
+    }
+
+    public function test_a_refresh_really_does_re_read(): void
+    {
+        // The escape hatch has to actually work, or a changed design is unrecoverable without
+        // waiting out the TTL.
+        $client = $this->countingClient();
+
+        FigmaReview::inspect($this->ref(), 0, $client);
+        $again = FigmaReview::inspect($this->ref(), 0, $client, true);
+
+        $this->assertSame(2, $client->calls);
+        $this->assertFalse($again['cached']);
+    }
+
+    public function test_a_different_depth_is_a_different_reading(): void
+    {
+        // Depth changes the answer, so sharing one cache entry across depths would serve the wrong
+        // candidate list -- and it would look like the depth control doing nothing.
+        $client = $this->countingClient();
+
+        FigmaReview::inspect($this->ref(), 0, $client);
+        FigmaReview::inspect($this->ref(), 1, $client);
+
+        $this->assertSame(2, $client->calls);
+    }
+
+    public function test_the_cache_is_not_keyed_by_token(): void
+    {
+        // The projection describes the FILE, which does not depend on whose token read it. Keying
+        // by token would make a second reviewer -- or the same person after the inevitable rotation
+        // of a short-lived PAT -- pay the cost-based limit again for a byte-identical answer.
+        $first = $this->countingClient('figd_one');
+        $second = $this->countingClient('figd_two');
+
+        FigmaReview::inspect($this->ref(), 0, $first);
+        $result = FigmaReview::inspect($this->ref(), 0, $second);
+
+        $this->assertSame(0, $second->calls, 'a different token must still hit the cache');
+        $this->assertTrue($result['cached']);
+    }
+
+    public function test_a_failure_is_never_cached(): void
+    {
+        // A cached refusal outlives its cause. A 429 especially: the operator may fix it with a
+        // different token, and serving them a stored "rate limited" would be a lie they cannot
+        // clear.
+        $failing = new class () extends FigmaClient {
+            public int $calls = 0;
+
+            public function __construct()
+            {
+                parent::__construct('figd_stub');
+            }
+
+            public function fetch_node(FigmaUrl $ref)
+            {
+                ++$this->calls;
+
+                return new \WP_Error('figma_rate_limited', 'Figma is rate-limiting this token.');
+            }
+        };
+
+        FigmaReview::inspect($this->ref(), 0, $failing);
+        $second = FigmaReview::inspect($this->ref(), 0, $failing);
+
+        $this->assertSame(2, $failing->calls, 'a failure must not be served from the cache');
+        $this->assertInstanceOf(\WP_Error::class, $second);
     }
 
     public function test_a_fetch_failure_is_returned_not_swallowed(): void

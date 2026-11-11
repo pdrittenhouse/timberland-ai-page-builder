@@ -133,7 +133,7 @@ const actions = {
      * plan they pick then goes through the SAME confirmation panel a typed prompt produces --
      * there is no Figma-specific review path, because a second path is a path where nobody looks.
      */
-    inspectFigma(url, depth) {
+    inspectFigma(url, depth, refresh = false) {
         return async ({ dispatch }) => {
             dispatch({ type: 'SET_INSPECTING_FIGMA', isInspectingFigma: true });
             dispatch({ type: 'SET_FIGMA_ERROR', figmaError: null });
@@ -144,7 +144,7 @@ const actions = {
                 const result = await apiFetch({
                     path: '/taipb/v1/figma/inspect',
                     method: 'POST',
-                    data: { url, depth },
+                    data: { url, depth, refresh },
                 });
 
                 dispatch({
@@ -157,6 +157,7 @@ const actions = {
                         skipped: result.skipped,
                         truncated: result.truncated,
                         source: result.source,
+                        cached: result.cached,
                     },
                 });
             } catch (e) {
