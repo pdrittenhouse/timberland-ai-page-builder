@@ -318,6 +318,8 @@ The `image_image` value MUST be an integer (WordPress attachment ID). ACF hydrat
 - When adapting a pattern/layout, ALWAYS preserve the original image field values (image_type, image, image_url) EXACTLY as they appear unless the user explicitly asks to change the image.
 - If the user provides a full URL, set `image_type` to `"url"` and put the URL in the `[IMAGE_URL]` field. The system will automatically check if it's a local image and convert to file mode if possible.
 - If the user references an image by filename (e.g., "hero-image.jpg") or description (e.g., "company logo"), put the filename or description string in the `[IMAGE_FILE]` field and set `image_type` to `"file"`. The system will automatically resolve it to the correct attachment ID.
+- `[IMAGE_FILE ids: ...]` in the plan are real attachment IDs. Use the integer, set `image_type` to `"file"`, and where it says "one per element in order" assign them in order — never one id repeated, never the later ones unused.
+- Leaving an image empty? Leave `image_type` unset too. A type with no image claims one that is not there.
 - If no image is referenced and you're not using a pattern, leave image fields empty.
 - The prefix varies by block (e.g., `image_image`, `bg_image_bg_image`, `image_one_image`). Always check the field-list annotations to identify the correct field names.
 RULES;
@@ -413,7 +415,12 @@ RULES;
         $prompt .= $this->build_custom_prompt_section();
 
         $prompt .= "\n# BLOCK CATALOGUE\n\n";
-        $prompt .= "What each block is for. These are the ONLY blocks that exist.\n";
+        // Same correction as the structure prompt: "the only blocks that exist" did not read as a
+        // prohibition on core blocks, because the model knows perfectly well that they exist.
+        $prompt .= "What each block is for. These are the ONLY blocks you may use.\n";
+        $prompt .= "WordPress core blocks are NOT available: no `core/heading`, `core/paragraph` or\n";
+        $prompt .= "any other `core/*`. They render without this site's fields or styling, which is\n";
+        $prompt .= "an invisible downgrade. A heading is a FIELD on a block below, not a block.\n";
         $prompt .= "You do not yet know their field names: call `" . BlockContextTool::NAME . "` with\n";
         $prompt .= "every block you intend to use, in ONE call, before writing any markup.\n\n";
 

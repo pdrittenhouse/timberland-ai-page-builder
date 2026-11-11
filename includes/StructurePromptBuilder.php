@@ -116,7 +116,16 @@ class StructurePromptBuilder
         $blocks = $this->manifest['blocks'] ?? [];
 
         $out = "# BLOCK CATALOGUE\n\n";
+        // "There are no others" was not enough, measured. A generation emitted `core/heading` and
+        // `core/paragraph` for a band that `acf/link-group` fits exactly -- a titled list of
+        // category links -- and reported no gap. The model knows core blocks exist in WordPress, so
+        // it read "no others" as "no other ACF blocks" rather than as a prohibition. Saying so
+        // explicitly costs one line.
         $out .= "Every block that exists, with what it is for. There are no others.\n";
+        $out .= "This EXCLUDES WordPress core blocks. Do NOT emit `core/heading`, `core/paragraph`,\n";
+        $out .= "`core/image` or any other `core/*` block: they render, but they carry none of this\n";
+        $out .= "site's fields or styling, so they are an invisible downgrade rather than a choice.\n";
+        $out .= "A heading or a paragraph is a FIELD on a block above, not a block of its own.\n";
         $out .= "You do NOT yet know their field names. Call `" . BlockContextTool::NAME . "` with\n";
         $out .= "every block you intend to use, in ONE call, before writing any block tree.\n";
         $out .= "Field names are never guessable: a plausible name that is not in a block's field\n";
@@ -125,9 +134,10 @@ class StructurePromptBuilder
         $out .= BlockCatalogue::lines($blocks, $curated);
 
         $out .= "\nIf a section needs something no block above can express, call `" . GapTool::NAME . "`\n";
-        $out .= "instead of substituting the nearest block, then build the parts that ARE\n";
-        $out .= "expressible. A reported gap beside a partial page is useful; a page that silently\n";
-        $out .= "approximates the design is not.\n";
+        $out .= "instead of substituting the nearest block OR reaching for a core block, then build\n";
+        $out .= "the parts that ARE expressible. A reported gap beside a partial page is useful; a\n";
+        $out .= "page that silently approximates the design is not. Reaching for `core/*` is the\n";
+        $out .= "silent approximation this rule exists to prevent, not an exception to it.\n";
 
         return $out;
     }
@@ -345,9 +355,19 @@ RULES;
                     $ids = array_values(array_filter((array) ($group['image_ids'] ?? []), 'is_numeric'));
 
                     if ($ids !== []) {
+                        // The CORRESPONDENCE is stated, not just the list. Measured: a page given
+                        // six ids for a six-up grid used 11 of 24 imported images overall, because
+                        // a bare list does not say that the sixth id belongs to the sixth card.
+                        // "one per element, in order" is the whole difference between a grid of six
+                        // photographs and a grid of one repeated six times.
+                        $ids = array_map('intval', array_slice($ids, 0, 12));
+
                         $line .= sprintf(
-                            ' [IMAGE_FILE ids: %s]',
-                            implode(', ', array_map('intval', array_slice($ids, 0, 8)))
+                            ' [IMAGE_FILE ids%s: %s]',
+                            $count > 1
+                                ? sprintf(', one per element in order — use all %d', count($ids))
+                                : '',
+                            implode(', ', $ids)
                         );
                     }
 

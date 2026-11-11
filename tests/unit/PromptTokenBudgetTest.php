@@ -70,8 +70,24 @@ final class PromptTokenBudgetTest extends TestCase {
      * ~294 tokens of fixed cost to stop two classes of error that were each burning a retry,
      * one of them silently invertible. The ratchet is doing its job by making that a decision
      * rather than a drift.
+     *
+     * **Raised 2,100 -> 2,250 on 2026-11-11, measured at 2,175.** Two rules were added to the image
+     * section, and both answer defects observed in a real generated page rather than anticipated
+     * ones:
+     *
+     *   - `[IMAGE_FILE ids: ...]` are real attachment IDs and, where a group repeats, they go
+     *     ONE PER ELEMENT IN ORDER. A bare list does not say that the sixth id belongs to the sixth
+     *     card, and the page used **11 of 24** imported images.
+     *   - An image left empty must leave `image_type` unset too. The same page had **48 image
+     *     fields claiming `type=file` with nothing in them** -- a field asserting an image that is
+     *     not there.
+     *
+     * Written tersely on purpose and compressed once already, from 2,255: this is the FIXED
+     * preamble, paid on every request, so the reasoning lives in this docblock and the directive
+     * goes in the prompt. 2,250 is ~75 tokens of headroom, deliberately tight -- the next addition
+     * should have to argue for itself the same way.
      */
-    private const FOCUSED_CEILING = 2100;
+    private const FOCUSED_CEILING = 2250;
 
     protected function setUp(): void {
         $this->stubWordPress();
