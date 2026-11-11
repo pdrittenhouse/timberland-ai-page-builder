@@ -79,12 +79,108 @@ class MarkupValidator
             $this->validate_acf_block($block_name, $block_data, $errors, $warnings);
         }
 
+        $this->validate_placement($markup, $errors, $warnings);
+
         return [
             'valid' => empty($errors),
             'errors' => $errors,
             'warnings' => $warnings,
             'block_count' => $block_count,
         ];
+    }
+
+    /**
+     * Where each block SITS, which nothing checked until now.
+     *
+     * Two distinct failures, both observed in live generations and both invisible to every other
+     * check here, because the rest of this class validates a block's `data` and never its position:
+     *
+     *  1. A block declaring `parent` placed somewhere else. `acf/table-cell` belongs inside
+     *     `acf/table-row` and nowhere else -- 11 of 48 blocks carry such a restriction -- and
+     *     WordPress enforces it in the editor while nothing enforced it on generated markup.
+     *  2. A block outside the catalogue entirely. A generation emitted `core/heading` and
+     *     `core/paragraph` after `get_block_fields` had explicitly reported them UNAVAILABLE and
+     *     the prompt had said "there are no others". They render, so nothing complained -- but they
+     *     carry no ACF fields and no design-system styling, which is the silent approximation
+     *     `report_gap` exists to replace. A warning, not an error: core blocks are legal WordPress
+     *     and an operator may want one; what they must not be is unremarked.
+     *
+     * Deliberately NOT enforced here: the curated `avoid_when` guidance, such as "Feature is a
+     * full-width band, not for a Column". That is prose, and prose is a label rather than a gate --
+     * FG3's rule. Making it enforceable needs a machine-readable negative-placement vocabulary,
+     * which WordPress itself does not have (`parent`, `ancestor` and `allowedBlocks` are all
+     * positive), and inventing one is a decision rather than a fix. Measured: `acf/feature` is
+     * still placed inside `acf/column` with its AVOID clause reaching the model.
+     *
+     * @param string[] $errors
+     * @param string[] $warnings
+     */
+    private function validate_placement(string $markup, array &$errors, array &$warnings): void
+    {
+        $blocks = $this->manifest['blocks'] ?? [];
+        $stack = [];
+        $seen_foreign = [];
+
+        // The namespace is OPTIONAL in block markup, and that is not a detail.
+        //
+        // WordPress serialises its own blocks without it -- `<!-- wp:heading -->` is `core/heading`
+        // -- so a pattern requiring `ns/name` matches every ACF block and no core one. The first
+        // version of this check did exactly that and reported zero warnings on markup containing
+        // two headings and two paragraphs, which read as "nothing to report" rather than "the check
+        // cannot see them".
+        preg_match_all(
+            '/<!--\s*(\/)?wp:([a-z0-9-]+(?:\/[a-z0-9-]+)?)(?:\s+\{.*?\})?\s*(\/)?-->/s',
+            $markup,
+            $tokens,
+            PREG_SET_ORDER
+        );
+
+        foreach ($tokens as $token) {
+            $closing = '' !== ($token[1] ?? '');
+            $name = (string) $token[2];
+            $self_closing = '' !== ($token[3] ?? '');
+
+            // Normalise to the canonical name so `wp:heading` and `core/heading` are one thing.
+            if (!str_contains($name, '/')) {
+                $name = 'core/' . $name;
+            }
+
+            if ($closing) {
+                array_pop($stack);
+                continue;
+            }
+
+            $parent = end($stack) ?: '';
+
+            if (!str_starts_with($name, 'acf/')) {
+                // Reported once per block type: a page of paragraphs should not produce a page of
+                // identical warnings.
+                if (!isset($seen_foreign[$name])) {
+                    $seen_foreign[$name] = true;
+                    $warnings[] = sprintf(
+                        'Block `%s` is not in the block catalogue. It will render, but it carries no '
+                        . 'ACF fields and no design-system styling%s.',
+                        $name,
+                        '' !== $parent ? sprintf(' (inside `%s`)', $parent) : ''
+                    );
+                }
+            }
+
+            $allowed = $blocks[$name]['parent'] ?? null;
+
+            if (is_array($allowed) && $allowed !== [] && !in_array($parent, $allowed, true)) {
+                $errors[] = sprintf(
+                    'Block `%s` may only be placed inside %s, but it is %s.',
+                    $name,
+                    '`' . implode('`, `', $allowed) . '`',
+                    '' !== $parent ? 'inside `' . $parent . '`' : 'at the top level'
+                );
+            }
+
+            if (!$self_closing) {
+                $stack[] = $name;
+            }
+        }
     }
 
     /**
