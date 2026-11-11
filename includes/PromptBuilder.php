@@ -97,9 +97,21 @@ class PromptBuilder
 
     private array $manifest;
 
-    public function __construct(array $manifest)
+
+    private ?SchemaOracle $oracle;
+
+    /**
+     * @param array<string, mixed> $manifest
+     * @param SchemaOracle|null    $oracle the SAME schemas the validator enforces, for field shapes
+     */
+    public function __construct(array $manifest, ?SchemaOracle $oracle = null)
     {
         $this->manifest = $manifest;
+        // Resolved lazily, not here. `Plugin::get_schema_oracle()` reaches for
+        // `get_template_directory()`, and constructing it eagerly made every unit test that builds
+        // a prompt depend on WordPress being bootstrapped -- for a schema most blocks never need,
+        // since only non-scalar fields are annotated.
+        $this->oracle = $oracle;
     }
 
     /**
@@ -505,7 +517,7 @@ RULES;
                     continue;
                 }
 
-                $annotation = $this->get_image_annotation($field_name, $type_map);
+                $annotation = $this->get_image_annotation($name, $field_name, $type_map);
                 $lines .= "  {$field_name}{$annotation}\n";
                 $listed++;
             }
@@ -1037,13 +1049,93 @@ RULES;
      * - *_image (image) → [IMAGE_FILE: integer attachment ID]
      * - *_image_url (url next to image_type) → [IMAGE_URL]
      */
-    private function get_image_annotation(string $field_name, array $type_map): string
+    /**
+     * The field's stored SHAPE, read from the schema the validator enforces.
+     *
+     * Returns '' for anything a plain string satisfies, so the common field stays a bare name and
+     * costs nothing. Only the shapes that actually reject a string are annotated.
+     *
+     * The `anyOf` in these schemas is always `[the real shape, the unset sentinel]` -- ACF writes
+     * `false`, `''`, `'null'` or `null` for an empty field -- so the branch to describe is the one
+     * that is not that enum.
+     *
+     * `link`'s key names are ACF's own, from `class-acf-field-link.php`: `title`, `url`, `target`.
+     * The schema says only `type: object`, which is enough to stop a string but not enough to
+     * produce a working link, so the keys are named where ACF's type tells us what they are.
+     */
+    private function schema_shape(string $block_name, string $field_name, string $acf_type): string
+    {
+        $oracle = $this->oracle ??= function_exists('get_template_directory')
+            ? Plugin::get_schema_oracle()
+            : null;
+
+        if (!$oracle instanceof SchemaOracle) {
+            return '';
+        }
+
+        $schema = $oracle->schema_for($block_name);
+
+        if (!is_array($schema)) {
+            return '';
+        }
+
+        $prop = $schema['properties'][$field_name] ?? null;
+
+        if (!is_array($prop)) {
+            return '';
+        }
+
+        $branches = isset($prop['anyOf']) && is_array($prop['anyOf']) ? $prop['anyOf'] : [$prop];
+        $type = null;
+
+        foreach ($branches as $branch) {
+            // Skip the unset sentinel; what is left is the shape a value must take.
+            if (!is_array($branch) || isset($branch['enum'])) {
+                continue;
+            }
+
+            $type = $branch['type'] ?? null;
+        }
+
+        $types = array_map('strval', (array) $type);
+
+        if (in_array('object', $types, true)) {
+            return 'link' === $acf_type
+                ? '  [OBJECT: {"title","url","target"} — never a bare string]'
+                : '  [OBJECT — never a bare string]';
+        }
+
+        if (in_array('array', $types, true)) {
+            return '  [ARRAY of post IDs]';
+        }
+
+        return '';
+    }
+
+    private function get_image_annotation(string $block_name, string $field_name, array $type_map): string
     {
         $type = $type_map[$field_name] ?? '';
 
         // Direct image field type
         if ($type === 'image') {
             return '  [IMAGE_FILE: integer attachment ID]';
+        }
+
+        // Anything whose stored value is not a plain string, stated from the SCHEMA.
+        //
+        // Measured failure this fixes: `acf/button.link` was listed as the bare name `link`, the
+        // model sent `"link": "/shop"`, and validation rejected it three times over -- "String
+        // value found, but an object is required", plus both halves of the anyOf. The field was
+        // visible and its SHAPE was not, so a plausible string was the only thing to send.
+        //
+        // Read from `SchemaOracle`, deliberately, rather than from a hand-kept map of ACF types.
+        // The validator judges against that schema, so describing anything else is how a prompt
+        // and its validator drift -- and five of the non-scalar ACF types do not even occur in
+        // this install's schemas, so a hardcoded table would be asserting shapes nobody verified.
+        $shape = $this->schema_shape($block_name, $field_name, $type);
+
+        if ($shape !== '') {
+            return $shape;
         }
 
         // Detect image_type select fields (field names ending in _image_type)
