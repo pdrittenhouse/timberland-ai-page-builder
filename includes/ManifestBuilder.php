@@ -121,6 +121,16 @@ class ManifestBuilder
                 // the same key, read from the same data, via the registry rather than the file.
                 'is_container' => !empty($supports['jsx']),
                 'parent' => is_array($block_type->parent) ? $block_type->parent : null,
+                // UC4: the other two placement primitives WordPress already defines, which this
+                // manifest ignored. `ancestor` is "anywhere under X" where `parent` is "directly
+                // inside X"; `allowedBlocks` is the container's own whitelist. No block in the
+                // corpus declares either today -- so this carries nothing now and stops the
+                // manifest being the reason a block that DOES declare one is described wrongly.
+                // Reading two fields WP defines is cheap; inventing a parallel vocabulary is not.
+                'ancestor' => is_array($block_type->ancestor ?? null) ? $block_type->ancestor : null,
+                'allowed_blocks' => is_array($block_type->allowed_blocks ?? null)
+                    ? $block_type->allowed_blocks
+                    : null,
                 'provides_context' => !empty($block_type->provides_context),
                 'uses_context' => !empty($block_type->uses_context),
                 'supports' => $this->simplify_supports($supports),

@@ -150,6 +150,45 @@ HTML;
         $this->assertSame([], $this->validator()->validate($markup)['errors']);
     }
 
+    public function test_an_ancestor_rule_is_satisfied_at_any_depth(): void
+    {
+        // `ancestor` is "anywhere beneath", unlike `parent`'s "directly inside", so it is checked
+        // against the whole stack. Checking only the immediate parent would report a block
+        // legitimately nested two levels down as misplaced.
+        $v = new MarkupValidator(['blocks' => [
+            'acf/section' => ['name' => 'acf/section', 'is_container' => true, 'field_key_map' => [], 'field_type_map' => []],
+            'acf/row' => ['name' => 'acf/row', 'is_container' => true, 'field_key_map' => [], 'field_type_map' => []],
+            'acf/deep' => ['name' => 'acf/deep', 'is_container' => false, 'ancestor' => ['acf/section'],
+                'field_key_map' => [], 'field_type_map' => []],
+        ]]);
+
+        $ok = "<!-- wp:acf/section {\"data\":{}} -->\n<!-- wp:acf/row {\"data\":{}} -->\n"
+            . "<!-- wp:acf/deep {\"data\":{}} /-->\n<!-- /wp:acf/row -->\n<!-- /wp:acf/section -->";
+        $this->assertSame([], $v->validate($ok)['errors'], 'two levels down still counts');
+
+        $bad = "<!-- wp:acf/row {\"data\":{}} -->\n<!-- wp:acf/deep {\"data\":{}} /-->\n<!-- /wp:acf/row -->";
+        $this->assertNotEmpty($v->validate($bad)['errors'], 'no section anywhere above it');
+    }
+
+    public function test_a_containers_allowed_blocks_list_is_honoured(): void
+    {
+        // The one rule owned by the PARENT rather than the child.
+        $v = new MarkupValidator(['blocks' => [
+            'acf/picky' => ['name' => 'acf/picky', 'is_container' => true,
+                'allowed_blocks' => ['acf/welcome'], 'field_key_map' => [], 'field_type_map' => []],
+            'acf/welcome' => ['name' => 'acf/welcome', 'is_container' => false, 'field_key_map' => [], 'field_type_map' => []],
+            'acf/unwelcome' => ['name' => 'acf/unwelcome', 'is_container' => false, 'field_key_map' => [], 'field_type_map' => []],
+        ]]);
+
+        $ok = "<!-- wp:acf/picky {\"data\":{}} -->\n<!-- wp:acf/welcome {\"data\":{}} /-->\n<!-- /wp:acf/picky -->";
+        $this->assertSame([], $v->validate($ok)['errors']);
+
+        $bad = "<!-- wp:acf/picky {\"data\":{}} -->\n<!-- wp:acf/unwelcome {\"data\":{}} /-->\n<!-- /wp:acf/picky -->";
+        $errors = $v->validate($bad)['errors'];
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('not accepted by', implode(' ', $errors));
+    }
+
     public function test_a_block_with_no_parent_restriction_may_sit_anywhere(): void
     {
         $markup = <<<'HTML'
