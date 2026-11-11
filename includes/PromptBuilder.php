@@ -405,19 +405,13 @@ RULES;
         $prompt .= "You do not yet know their field names: call `" . BlockContextTool::NAME . "` with\n";
         $prompt .= "every block you intend to use, in ONE call, before writing any markup.\n\n";
 
-        foreach ($catalogue as $slug => $entry) {
-            $prompt .= "- `{$slug}`";
-
-            if ($entry['best_for'] !== '') {
-                $prompt .= " — {$entry['best_for']}";
-            }
-
-            if ($entry['avoid_when'] !== '') {
-                $prompt .= " AVOID: {$entry['avoid_when']}";
-            }
-
-            $prompt .= "\n";
-        }
+        // Membership comes from the manifest; `$catalogue` only decorates it. Iterating the curated
+        // index instead -- which is what this did -- offered 41 of 48 blocks and omitted `button`,
+        // `card`, `hero-unit`, `image`, `jumbotron`, `menu` and `posts-loop`, so the model could
+        // not choose a card or a hero while being told there were no other blocks. It also printed
+        // the index's BARE keys, naming `accordion` for a block that must be emitted as
+        // `acf/accordion`.
+        $prompt .= BlockCatalogue::lines($this->manifest['blocks'] ?? [], $catalogue);
 
         $prompt .= "\nIf the request needs something no block above can express, call `" . GapTool::NAME . "`\n";
         $prompt .= "instead of substituting the nearest block, then carry on and build the parts that\n";

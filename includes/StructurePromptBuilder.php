@@ -122,34 +122,7 @@ class StructurePromptBuilder
         $out .= "Field names are never guessable: a plausible name that is not in a block's field\n";
         $out .= "list is rejected by validation, and the value is lost.\n\n";
 
-        foreach ($blocks as $slug => $block) {
-            $bare = str_replace('acf/', '', $slug);
-            $guide = $curated[$bare] ?? $curated[$slug] ?? [];
-
-            $out .= "- `{$slug}`";
-            $out .= ($block['is_container'] ?? false) ? ' (container)' : ' (leaf)';
-
-            $best_for = trim((string) ($guide['best_for'] ?? ''));
-            $description = trim((string) ($block['description'] ?? ''));
-
-            if ('' !== $best_for) {
-                $out .= " — {$best_for}";
-            } elseif ('' !== $description) {
-                $out .= " — {$description}";
-            }
-
-            if ('' !== trim((string) ($guide['avoid_when'] ?? ''))) {
-                $out .= ' AVOID: ' . trim((string) $guide['avoid_when']);
-            }
-
-            // A parent restriction is a placement rule, so it belongs with the name rather than in
-            // the field detail -- it decides whether the block is a candidate at all.
-            if (!empty($block['parent'])) {
-                $out .= ' [only inside ' . implode(', ', (array) $block['parent']) . ']';
-            }
-
-            $out .= "\n";
-        }
+        $out .= BlockCatalogue::lines($blocks, $curated);
 
         $out .= "\nIf a section needs something no block above can express, call `" . GapTool::NAME . "`\n";
         $out .= "instead of substituting the nearest block, then build the parts that ARE\n";
