@@ -3,6 +3,7 @@ import { useSelect } from '@wordpress/data';
 import ModelSelector from './ModelSelector';
 import GenerationModeToggle from './GenerationModeToggle';
 import PromptInput from './PromptInput';
+import FigmaImportPanel from './FigmaImportPanel';
 import LayoutPlanPanel from './LayoutPlanPanel';
 import StructureReviewPanel from './StructureReviewPanel';
 import PatternMatch from './PatternMatch';
@@ -28,6 +29,7 @@ export default function Sidebar() {
                 <ModelSelector />
                 <GenerationModeToggle />
                 <PromptInput postType={postType} postId={postId} />
+                <FigmaImportPanel />
                 <LayoutPlanPanel postType={postType} postId={postId} />
                 <StructureReviewPanel postType={postType} postId={postId} />
                 <PatternMatch postType={postType} postId={postId} />

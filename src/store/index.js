@@ -25,6 +25,11 @@ const DEFAULT_STATE = {
     error: null,
     history: [],
     isLoadingHistory: false,
+    figmaUrl: '',
+    figmaCandidates: null,
+    figmaMeta: null,
+    isInspectingFigma: false,
+    figmaError: null,
 };
 
 const actions = {
@@ -114,6 +119,85 @@ const actions = {
             markup,
             validation,
             apiResponse,
+        };
+    },
+
+    setFigmaUrl(figmaUrl) {
+        return { type: 'SET_FIGMA_URL', figmaUrl };
+    },
+
+    /**
+     * Read a Figma link and offer its candidate pages for review.
+     *
+     * Deliberately stops at "here are the candidates". Picking one is the operator's, and the
+     * plan they pick then goes through the SAME confirmation panel a typed prompt produces --
+     * there is no Figma-specific review path, because a second path is a path where nobody looks.
+     */
+    inspectFigma(url, depth) {
+        return async ({ dispatch }) => {
+            dispatch({ type: 'SET_INSPECTING_FIGMA', isInspectingFigma: true });
+            dispatch({ type: 'SET_FIGMA_ERROR', figmaError: null });
+            dispatch.clearDecomposition();
+            dispatch.clearBlockTree();
+
+            try {
+                const result = await apiFetch({
+                    path: '/taipb/v1/figma/inspect',
+                    method: 'POST',
+                    data: { url, depth },
+                });
+
+                dispatch({
+                    type: 'SET_FIGMA_CANDIDATES',
+                    candidates: result.candidates || [],
+                    meta: {
+                        file: result.file,
+                        node: result.node,
+                        depth: result.depth,
+                        skipped: result.skipped,
+                        truncated: result.truncated,
+                        source: result.source,
+                    },
+                });
+            } catch (e) {
+                // The code matters more than the message: a 429 is retried unchanged, a bad host
+                // is the operator's link to fix, and a missing token is a settings trip. Collapsing
+                // them into one "something went wrong" is what sends people to rotate a working
+                // token.
+                dispatch({
+                    type: 'SET_FIGMA_ERROR',
+                    figmaError: {
+                        code: e?.code || 'unknown',
+                        message: e?.message || 'Could not read that Figma file.',
+                    },
+                });
+            } finally {
+                dispatch({ type: 'SET_INSPECTING_FIGMA', isInspectingFigma: false });
+            }
+        };
+    },
+
+    /**
+     * Hand one candidate's plan to the normal review flow.
+     *
+     * The prompt is seeded, not replaced silently: `/structure` rejects an empty prompt, and a
+     * design cannot state what the page is FOR, which content is real and which is placeholder, or
+     * what tone to keep. The seed names the frame so the operator can see what it refers to, and
+     * the existing prompt box stays editable so they can say the part the design cannot.
+     */
+    applyFigmaCandidate(candidate) {
+        return ({ dispatch, select: storeSelect }) => {
+            const existing = (storeSelect.getPrompt() || '').trim();
+            const name = candidate?.name || 'this frame';
+
+            if (existing === '') {
+                dispatch.setPrompt(
+                    `Build the "${name}" page from the linked Figma frame. ` +
+                        'Treat the text in the plan as the real copy unless it reads as placeholder.'
+                );
+            }
+
+            dispatch.setDecomposition(candidate.decomposition);
         };
     },
 
@@ -672,6 +756,33 @@ const reducer = (state = DEFAULT_STATE, action) => {
                 clarificationAnswers: {},
             };
 
+        case 'SET_FIGMA_URL':
+            // Editing the URL drops the previous file's candidates. Keeping them on screen means
+            // "Review this page" can import a plan derived from a file the operator has already
+            // navigated away from -- and every section of it would carry the OLD file key, so the
+            // provenance trail would point at the wrong document while looking perfectly intact.
+            return {
+                ...state,
+                figmaUrl: action.figmaUrl,
+                figmaCandidates: null,
+                figmaMeta: null,
+                figmaError: null,
+            };
+
+        case 'SET_INSPECTING_FIGMA':
+            return { ...state, isInspectingFigma: action.isInspectingFigma };
+
+        case 'SET_FIGMA_ERROR':
+            return { ...state, figmaError: action.figmaError };
+
+        case 'SET_FIGMA_CANDIDATES':
+            return {
+                ...state,
+                figmaCandidates: action.candidates,
+                figmaMeta: action.meta,
+                figmaError: null,
+            };
+
         case 'SET_DECOMPOSITION':
             return { ...state, decomposition: action.decomposition };
 
@@ -730,6 +841,11 @@ const reducer = (state = DEFAULT_STATE, action) => {
 
 const selectors = {
     getPrompt: (state) => state.prompt,
+    getFigmaUrl: (state) => state.figmaUrl,
+    getFigmaCandidates: (state) => state.figmaCandidates,
+    getFigmaMeta: (state) => state.figmaMeta,
+    isInspectingFigma: (state) => state.isInspectingFigma,
+    getFigmaError: (state) => state.figmaError,
     getModel: (state) => state.selectedModel,
     getGenerationMode: (state) => state.generationMode,
     isGenerating: (state) => state.isGenerating,
