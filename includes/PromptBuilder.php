@@ -86,23 +86,14 @@ class PromptBuilder
      */
     private const PATTERNS_SECTION_TOKEN_BUDGET = 1100;
 
-    private const CORE_BLOCKS = [
-        'acf/section',
-        'acf/row',
-        'acf/column',
-    ];
-
-    /** Blocks included when no specific match is found. */
-    private const COMMON_BLOCKS = [
-        'acf/card',
-        'acf/card-grid',
-        'acf/button',
-        'acf/jumbotron',
-        'acf/hero-unit',
-        'acf/feature',
-        'acf/promo',
-        'acf/text-block',
-    ];
+    /**
+     * The layout primitives, still used below to label core vs content blocks in the catalogue.
+     *
+     * Aliased to BlockRelevance so selection and labelling cannot drift apart -- they were two
+     * separate literals saying the same thing. COMMON_BLOCKS moved there outright; only the
+     * fallback used it.
+     */
+    private const CORE_BLOCKS = BlockRelevance::CORE_BLOCKS;
 
     private array $manifest;
 
@@ -925,116 +916,19 @@ RULES;
     /**
      * Filter manifest blocks to those relevant to the user's prompt.
      */
+    /**
+     * Which blocks this prompt gets to see.
+     *
+     * Delegated to {@see BlockRelevance}, which this and `StructurePromptBuilder` had near-identical
+     * copies of -- and therefore identical defects. `score_description` stays true here, which is
+     * the one thing the two copies genuinely differed on and the only behaviour this refactor must
+     * not change for direct mode.
+     *
+     * @return array<string, array<string, mixed>>
+     */
     private function filter_blocks_for_prompt(string $user_prompt): array
     {
-        $all_blocks = $this->manifest['blocks'] ?? [];
-        $prompt_lower = strtolower($user_prompt);
-        $prompt_words = preg_split('/[\s,.\-\/]+/', $prompt_lower, -1, PREG_SPLIT_NO_EMPTY);
-
-        $selected = [];
-
-        // Always include core layout blocks
-        foreach (self::CORE_BLOCKS as $name) {
-            if (isset($all_blocks[$name])) {
-                $selected[$name] = $all_blocks[$name];
-            }
-        }
-
-        // Score the rest, then take the BEST ones -- not every one that scored at all.
-        //
-        // This used to include any block with `$score > 0`, uncapped. Scoring matches loosely
-        // against names, keywords and descriptions, so a short request pulls in far more than it
-        // needs: measured on natural-rose's real 48-block manifest, "A simple contact page"
-        // selected 21 blocks and cost 48,313 tokens against a 3,000-8,000 allowance for all
-        // component context.
-        //
-        // The cap is derived from that measurement rather than picked: a described block costs
-        // roughly 880 tokens (about 210 field names at ~15 bytes each, plus prose), the fixed
-        // RULES, nesting and post-type sections cost about 1,700, so the allowance affords
-        // around seven blocks. A request genuinely needing more than that is better served by
-        // the two-pass path, where the plan is settled first and only the chosen blocks are
-        // described.
-        $scored = [];
-
-        foreach ($all_blocks as $name => $block) {
-            if (isset($selected[$name])) {
-                continue;
-            }
-
-            $score = $this->score_block($block, $prompt_words, $prompt_lower);
-            if ($score > 0) {
-                $block['_relevance_score'] = $score;
-                $scored[$name] = $block;
-            }
-        }
-
-        // Highest score first; ties keep manifest order, which is alphabetical and therefore
-        // stable. A prompt must produce the same context every time or it cannot be evaluated,
-        // cached or regression-tested.
-        uasort($scored, static fn(array $a, array $b): int => ($b['_relevance_score'] ?? 0) <=> ($a['_relevance_score'] ?? 0));
-
-        // Every scored block is OFFERED, in relevance order. How many actually get described is
-        // decided by the token ceiling in build_blocks_section(), not here.
-        //
-        // There was a count cap here as well, and having both was worse than having either: a
-        // count cannot bound a budget when per-block cost varies tenfold (ten blocks cost ~6,400
-        // tokens on natural-rose and ~9,800 on updater-starter), and blocks cut by the count were
-        // silently absent while blocks cut by the budget were named in the prompt. One mechanism,
-        // one place, one explanation to the model.
-        foreach ($scored as $name => $block) {
-            $selected[$name] = $block;
-        }
-
-        // If we only matched core blocks, add common blocks as fallback
-        if (count($selected) <= count(self::CORE_BLOCKS)) {
-            foreach (self::COMMON_BLOCKS as $name) {
-                if (isset($all_blocks[$name]) && !isset($selected[$name])) {
-                    $selected[$name] = $all_blocks[$name];
-                }
-            }
-        }
-
-        return $selected;
-    }
-
-    /**
-     * Score a block's relevance to the user prompt.
-     */
-    private function score_block(array $block, array $prompt_words, string $prompt_lower): int
-    {
-        $score = 0;
-
-        // Check block name (without acf/ prefix)
-        $short_name = str_replace('acf/', '', $block['name'] ?? '');
-        $name_parts = preg_split('/[\-_]+/', $short_name);
-
-        foreach ($name_parts as $part) {
-            if (in_array($part, $prompt_words, true)) {
-                $score += 3;
-            }
-        }
-
-        // Check title words
-        $title_words = preg_split('/[\s\-_]+/', strtolower($block['title'] ?? ''));
-        foreach ($title_words as $word) {
-            if (in_array($word, $prompt_words, true)) {
-                $score += 2;
-            }
-        }
-
-        // Check keywords
-        foreach ($block['keywords'] ?? [] as $keyword) {
-            if (str_contains($prompt_lower, strtolower($keyword))) {
-                $score += 2;
-            }
-        }
-
-        // Check description
-        if (!empty($block['description']) && $this->text_overlaps($prompt_lower, strtolower($block['description']))) {
-            $score += 1;
-        }
-
-        return $score;
+        return BlockRelevance::select($this->manifest['blocks'] ?? [], $user_prompt, [], true);
     }
 
     /**
@@ -1170,17 +1064,4 @@ RULES;
     /**
      * Check if any meaningful words from the prompt appear in the text.
      */
-    private function text_overlaps(string $prompt, string $text): bool
-    {
-        $words = preg_split('/[\s,.\-\/]+/', $prompt, -1, PREG_SPLIT_NO_EMPTY);
-        $stop_words = ['a', 'an', 'the', 'is', 'are', 'was', 'were', 'with', 'and', 'or', 'for', 'to', 'in', 'on', 'at', 'of', 'that', 'this', 'it', 'me', 'my', 'i', 'we', 'our', 'make', 'create', 'add', 'build', 'generate', 'page', 'post'];
-
-        foreach ($words as $word) {
-            if (strlen($word) > 2 && !in_array($word, $stop_words, true) && str_contains($text, $word)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }

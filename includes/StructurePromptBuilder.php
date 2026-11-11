@@ -17,23 +17,10 @@ if (!defined('ABSPATH')) {
 class StructurePromptBuilder
 {
     /** Blocks that are always included (layout scaffolding). */
-    private const CORE_BLOCKS = [
-        'acf/section',
-        'acf/row',
-        'acf/column',
-    ];
-
-    /** Blocks included when no specific match is found. */
-    private const COMMON_BLOCKS = [
-        'acf/card',
-        'acf/card-grid',
-        'acf/button',
-        'acf/jumbotron',
-        'acf/hero-unit',
-        'acf/feature',
-        'acf/promo',
-        'acf/text-block',
-    ];
+    /*
+     * CORE_BLOCKS / COMMON_BLOCKS moved to BlockRelevance. They were byte-identical to
+     * PromptBuilder's copies, which is how both ended up with the same unreachable fallback.
+     */
 
     private array $manifest;
 
@@ -413,94 +400,21 @@ RULES;
     }
 
     /**
-     * Filter manifest blocks to those relevant to the prompt and decomposition.
+     * Which blocks this prompt gets to see.
+     *
+     * Delegated to {@see BlockRelevance}: this method and `score_block()` were near-duplicates of
+     * `PromptBuilder`'s, and so carried the same three defects -- substring keyword matching, a
+     * count-gated fallback that the substring bug made unreachable, and scoring only the operator's
+     * prose while the confirmed plan's own content went unread.
+     *
+     * `score_description` stays false here, which is what this builder already did.
+     *
+     * @param array<string, mixed> $decomposition
+     *
+     * @return array<string, array<string, mixed>>
      */
     private function filter_blocks_for_prompt(string $user_prompt, array $decomposition): array
     {
-        $all_blocks = $this->manifest['blocks'] ?? [];
-        $prompt_lower = strtolower($user_prompt);
-        $prompt_words = preg_split('/[\s,.\-\/]+/', $prompt_lower, -1, PREG_SPLIT_NO_EMPTY);
-
-        $selected = [];
-
-        // Always include core layout blocks
-        foreach (self::CORE_BLOCKS as $name) {
-            if (isset($all_blocks[$name])) {
-                $selected[$name] = $all_blocks[$name];
-            }
-        }
-
-        // Include blocks referenced in decomposition pattern hints
-        foreach ($decomposition['sections'] ?? [] as $section) {
-            $hint = strtolower($section['pattern_hint'] ?? '');
-            if (empty($hint)) {
-                continue;
-            }
-            foreach ($all_blocks as $name => $block) {
-                if (isset($selected[$name])) {
-                    continue;
-                }
-                $block_title = strtolower($block['title'] ?? '');
-                $block_short = str_replace('acf/', '', $name);
-                if (str_contains($hint, $block_short) || str_contains($hint, $block_title)) {
-                    $selected[$name] = $block;
-                }
-            }
-        }
-
-        // Score remaining blocks by relevance to user prompt
-        foreach ($all_blocks as $name => $block) {
-            if (isset($selected[$name])) {
-                continue;
-            }
-
-            $score = $this->score_block($block, $prompt_words, $prompt_lower);
-            if ($score > 0) {
-                $selected[$name] = $block;
-            }
-        }
-
-        // If we only matched core blocks, add common blocks as fallback
-        if (count($selected) <= count(self::CORE_BLOCKS)) {
-            foreach (self::COMMON_BLOCKS as $name) {
-                if (isset($all_blocks[$name]) && !isset($selected[$name])) {
-                    $selected[$name] = $all_blocks[$name];
-                }
-            }
-        }
-
-        return $selected;
-    }
-
-    /**
-     * Score a block's relevance to the user prompt.
-     */
-    private function score_block(array $block, array $prompt_words, string $prompt_lower): int
-    {
-        $score = 0;
-
-        $short_name = str_replace('acf/', '', $block['name'] ?? '');
-        $name_parts = preg_split('/[\-_]+/', $short_name);
-
-        foreach ($name_parts as $part) {
-            if (in_array($part, $prompt_words, true)) {
-                $score += 3;
-            }
-        }
-
-        $title_words = preg_split('/[\s\-_]+/', strtolower($block['title'] ?? ''));
-        foreach ($title_words as $word) {
-            if (in_array($word, $prompt_words, true)) {
-                $score += 2;
-            }
-        }
-
-        foreach ($block['keywords'] ?? [] as $keyword) {
-            if (str_contains($prompt_lower, strtolower($keyword))) {
-                $score += 2;
-            }
-        }
-
-        return $score;
+        return BlockRelevance::select($this->manifest['blocks'] ?? [], $user_prompt, $decomposition, false);
     }
 }
