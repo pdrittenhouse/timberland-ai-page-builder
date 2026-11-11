@@ -456,3 +456,47 @@
     /* Figma text can be long; a wrapped title is better than a list that scrolls sideways. */
     overflow-wrap: anywhere;
 }
+
+/* Fidelity — a report, not a score. */
+.taipb-fidelity {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.taipb-fidelity__heading {
+    margin: 0 0 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #757575;
+}
+
+.taipb-fidelity__signals {
+    margin: 0 0 8px;
+    padding: 0;
+    list-style: none;
+    font-size: 12px;
+}
+
+.taipb-fidelity__signals li {
+    margin-bottom: 2px;
+}
+
+.taipb-fidelity__notes {
+    margin: 0;
+    padding-left: 16px;
+    font-size: 12px;
+}
+
+.taipb-fidelity__missing {
+    margin-top: 8px;
+    font-size: 12px;
+}
+
+.taipb-fidelity__missing ul {
+    margin: 4px 0 0;
+    padding-left: 16px;
+    /* Figma copy can be long; wrap rather than scroll the sidebar sideways. */
+    overflow-wrap: anywhere;
+}

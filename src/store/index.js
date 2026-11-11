@@ -21,6 +21,7 @@ const DEFAULT_STATE = {
     structureApiResponse: null,
     generatedMarkup: '',
     validationResult: null,
+    fidelityReport: null,
     apiResponse: null,
     error: null,
     history: [],
@@ -113,12 +114,13 @@ const actions = {
         return { type: 'SET_STRUCTURE_API_RESPONSE', apiResponse };
     },
 
-    setResult(markup, validation, apiResponse) {
+    setResult(markup, validation, apiResponse, fidelity = null) {
         return {
             type: 'SET_RESULT',
             markup,
             validation,
             apiResponse,
+            fidelity,
         };
     },
 
@@ -645,6 +647,11 @@ const actions = {
                         prompt,
                         post_id: postId || null,
                         post_type: postType || 'page',
+                        // Sent so /assemble can report how much of the confirmed plan survived.
+                        // Validation already says every field NAME is real; this is the separate
+                        // question of whether the page resembles what was confirmed, and the two
+                        // are shown side by side rather than merged.
+                        decomposition: storeSelect.getDecomposition() || null,
                     },
                 });
 
@@ -661,7 +668,8 @@ const actions = {
                 dispatch.setResult(
                     result.markup,
                     result.validation,
-                    combinedResponse
+                    combinedResponse,
+                    result.fidelity || null
                 );
             } catch (err) {
                 const message =
@@ -814,6 +822,8 @@ const reducer = (state = DEFAULT_STATE, action) => {
                 generatedMarkup: action.markup,
                 validationResult: action.validation,
                 apiResponse: action.apiResponse,
+                // Null on the direct path, which never had a confirmed plan to compare against.
+                fidelityReport: action.fidelity ?? null,
                 error: null,
             };
 
@@ -843,6 +853,7 @@ const reducer = (state = DEFAULT_STATE, action) => {
 const selectors = {
     getPrompt: (state) => state.prompt,
     getFigmaUrl: (state) => state.figmaUrl,
+    getFidelityReport: (state) => state.fidelityReport,
     getFigmaCandidates: (state) => state.figmaCandidates,
     getFigmaMeta: (state) => state.figmaMeta,
     isInspectingFigma: (state) => state.isInspectingFigma,

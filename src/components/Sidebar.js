@@ -9,6 +9,7 @@ import StructureReviewPanel from './StructureReviewPanel';
 import PatternMatch from './PatternMatch';
 import ClarificationPanel from './ClarificationPanel';
 import PreviewPanel from './PreviewPanel';
+import FidelityPanel from './FidelityPanel';
 import InsertButton from './InsertButton';
 import HistoryPanel from './HistoryPanel';
 
@@ -35,6 +36,7 @@ export default function Sidebar() {
                 <PatternMatch postType={postType} postId={postId} />
                 <ClarificationPanel postType={postType} postId={postId} />
                 <PreviewPanel />
+                <FidelityPanel />
                 <InsertButton />
             </PanelBody>
 
