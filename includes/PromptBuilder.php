@@ -524,6 +524,27 @@ RULES;
                     . " alignment, visibility). They are not listed: leave them unset and the"
                     . " design system's defaults apply. Do NOT invent names for them.\n";
             }
+        } else {
+            // A block the manifest knows but has NO fields for.
+            //
+            // Silence here is the failure mode this whole tool loop exists to prevent. The model
+            // was shown a title, a description and then nothing -- indistinguishable from "this
+            // block takes no content" -- so a model asked to fill a section invents plausible
+            // field names, which is precisely how `col_width` and `cards` reached a block tree and
+            // cost 40 validation errors.
+            //
+            // It happens without anyone doing anything wrong: block membership comes from
+            // `WP_Block_Type_Registry` while fields come from ACF field groups titled `Block: ` or
+            // `Module: `. A block that registers before its group exists, or whose group is titled
+            // anything else, lands here. `describe_block()`'s contract already says an ABSENT block
+            // must never read as "a block with no fields"; this says the same thing out loud for a
+            // present one.
+            // Kept to two lines on purpose. The budget test caught the first version at five, and
+            // was right to: the model needs a directive, not an explanation, and this is prose
+            // charged against every described block in the inline path. The reason it happens
+            // belongs in this comment, not in the prompt.
+            $entry .= "- NO field definitions available: do not guess field names for this block.\n";
+            $entry .= "  Use a block whose fields you have, or call `" . GapTool::NAME . "`.\n";
         }
 
         $entry .= "\n";
