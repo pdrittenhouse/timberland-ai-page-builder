@@ -201,6 +201,39 @@ class RestController
             ],
         ]);
 
+        register_rest_route(self::NAMESPACE, '/blocks/placeable', [
+            'methods' => 'GET',
+            'callback' => [$this, 'handle_placeable_blocks'],
+            'permission_callback' => [$this, 'can_edit'],
+            'args' => [
+                'parent' => [
+                    'required' => false,
+                    'type' => 'string',
+                    'default' => '',
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
+                'ancestors' => [
+                    'required' => false,
+                    'type' => 'array',
+                    'items' => ['type' => 'string'],
+                    'default' => [],
+                ],
+            ],
+        ]);
+
+        register_rest_route(self::NAMESPACE, '/blocks/fields', [
+            'methods' => 'GET',
+            'callback' => [$this, 'handle_block_fields'],
+            'permission_callback' => [$this, 'can_edit'],
+            'args' => [
+                'block' => [
+                    'required' => true,
+                    'type' => 'string',
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
+            ],
+        ]);
+
         register_rest_route(self::NAMESPACE, '/figma/inspect', [
             'methods' => 'POST',
             'callback' => [$this, 'handle_figma_inspect'],
@@ -755,6 +788,121 @@ class RestController
                 'error' => $e->getMessage(),
             ], 200);
         }
+    }
+
+    /**
+     * GET /blocks/placeable — which blocks may legally sit at a given position.
+     *
+     * UC5. The structure review could edit a block's field VALUES and not its identity, so an
+     * operator who could see that the wrong block had been chosen could only edit its heading. This
+     * is what lets them change it.
+     *
+     * **Filtered, not listed.** Offering all 48 and letting validation reject the illegal ones
+     * would be worse than offering none, because the operator would reasonably trust the list. The
+     * same three placement primitives the validator enforces decide what appears here, so the panel
+     * and the validator cannot disagree.
+     *
+     * Names and titles only. The full manifest is **1.4 MB** on this install -- 14,972 field
+     * definitions -- which is not something to pull into the editor to populate a dropdown; fields
+     * come from `/blocks/fields` for the one block actually chosen.
+     */
+    public function handle_placeable_blocks(\WP_REST_Request $request): \WP_REST_Response
+    {
+        $manifest = Plugin::get_manifest_store()->get();
+        $parent = (string) $request->get_param('parent');
+        $ancestors = array_values(array_filter((array) $request->get_param('ancestors'), 'is_string'));
+
+        $out = [];
+
+        foreach ($manifest['blocks'] ?? [] as $name => $block) {
+            if (!self::may_sit_here($name, $block, $parent, $ancestors, $manifest)) {
+                continue;
+            }
+
+            $out[] = [
+                'name' => (string) $name,
+                'title' => (string) ($block['title'] ?? $name),
+                'is_container' => (bool) ($block['is_container'] ?? false),
+            ];
+        }
+
+        return new \WP_REST_Response(['blocks' => $out, 'parent' => $parent], 200);
+    }
+
+    /**
+     * The three positive placement rules, applied exactly as `MarkupValidator` applies them.
+     *
+     * @param array<string, mixed> $block
+     * @param array<int, string>   $ancestors the open stack above this position, outermost first
+     * @param array<string, mixed> $manifest
+     */
+    private static function may_sit_here(
+        string $name,
+        array $block,
+        string $parent,
+        array $ancestors,
+        array $manifest
+    ): bool {
+        $allowed_parents = $block['parent'] ?? null;
+
+        if (is_array($allowed_parents) && $allowed_parents !== [] && !in_array($parent, $allowed_parents, true)) {
+            return false;
+        }
+
+        $required_ancestors = $block['ancestor'] ?? null;
+
+        if (is_array($required_ancestors) && $required_ancestors !== []
+            && [] === array_intersect($ancestors, $required_ancestors)) {
+            return false;
+        }
+
+        $parent_allows = '' !== $parent
+            ? ($manifest['blocks'][$parent]['allowed_blocks'] ?? null)
+            : null;
+
+        if (is_array($parent_allows) && $parent_allows !== [] && !in_array($name, $parent_allows, true)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * GET /blocks/fields — one block's content field names.
+     *
+     * Served from the same `PromptBuilder` path the model's `get_block_fields` tool uses, so the
+     * editor and the model agree on what a block accepts rather than each deciding separately --
+     * the duplication this subsystem has been bitten by four times.
+     *
+     * Needed because swapping a block changes which fields exist, and silently carrying over values
+     * the new block has no home for would produce validation errors the operator did not cause.
+     */
+    public function handle_block_fields(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
+    {
+        $manifest = Plugin::get_manifest_store()->get();
+        $block = (string) $request->get_param('block');
+
+        if (!isset($manifest['blocks'][$block])) {
+            return new \WP_Error(
+                'taipb_unknown_block',
+                sprintf('No block named `%s` is registered.', $block),
+                ['status' => 404]
+            );
+        }
+
+        $types = $manifest['blocks'][$block]['field_type_map'] ?? [];
+        $fields = [];
+
+        foreach (array_keys($manifest['blocks'][$block]['field_key_map'] ?? []) as $field) {
+            // Clone fields are ACF scaffolding, always empty, and rebuilt server-side.
+            if ('clone' === ($types[$field] ?? '')) {
+                continue;
+            }
+
+            $fields[] = (string) $field;
+        }
+
+        return new \WP_REST_Response(['block' => $block, 'fields' => $fields], 200);
     }
 
     /**

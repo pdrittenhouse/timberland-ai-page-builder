@@ -500,3 +500,22 @@
     /* Figma copy can be long; wrap rather than scroll the sidebar sideways. */
     overflow-wrap: anywhere;
 }
+
+/* UC5 — the block's identity is a control, not a label. */
+.taipb-block-node-name--editable {
+    /* Reads as the block name until hovered; the affordance must not shout over the tree. */
+    height: auto;
+    padding: 0;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.taipb-block-node-name--editable:hover {
+    text-decoration: underline;
+}
+
+.taipb-block-node-picker {
+    /* Narrow sidebar: a full-width select beats a truncated one. */
+    width: 100%;
+    max-width: 100%;
+}

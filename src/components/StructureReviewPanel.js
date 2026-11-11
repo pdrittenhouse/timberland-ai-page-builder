@@ -1,6 +1,50 @@
-import { Button, Card, CardBody, TextControl, TextareaControl } from '@wordpress/components';
+import {
+    Button,
+    Card,
+    CardBody,
+    Notice,
+    SelectControl,
+    TextControl,
+    TextareaControl,
+} from '@wordpress/components';
 import { useSelect, useDispatch } from '@wordpress/data';
+import { useState, useEffect } from '@wordpress/element';
+import apiFetch from '@wordpress/api-fetch';
+import { addQueryArgs } from '@wordpress/url';
 import { STORE_NAME } from '../store';
+
+/**
+ * Walk to a node by path.
+ *
+ * Extracted so the field editor and the block swap navigate identically. They had one copy each in
+ * the first draft, which is the duplication this subsystem has been bitten by four times -- and a
+ * navigation that disagreed with itself would write a value into the wrong block.
+ *
+ * Path indices map to `children[0..n-1]` then `inner_blocks[n..n+m-1]`, matching the shape
+ * /structure emits.
+ */
+function nodeAt(tree, path) {
+    let node = null;
+    const roots = tree.blocks || [];
+
+    for (let i = 0; i < path.length; i++) {
+        const idx = path[i];
+
+        if (i === 0) {
+            node = roots[idx];
+        } else {
+            const kids = node?.children || [];
+            const inner = node?.inner_blocks || [];
+            node = idx < kids.length ? kids[idx] : inner[idx - kids.length];
+        }
+
+        if (!node) {
+            return null;
+        }
+    }
+
+    return node;
+}
 
 /**
  * Renders the block tree from the Structure step for user review/editing.
@@ -16,6 +60,8 @@ export default function StructureReviewPanel({ postType, postId }) {
         }),
         []
     );
+
+    const [swapNote, setSwapNote] = useState('');
 
     const { setBlockTree, assembleMarkup, clearBlockTree, setError } =
         useDispatch(STORE_NAME);
@@ -35,31 +81,72 @@ export default function StructureReviewPanel({ postType, postId }) {
     };
 
     /**
+     * Replace the BLOCK at a position, keeping the values the new block can hold.
+     *
+     * UC5. This panel could edit a block's field values and not its identity, so an operator who
+     * could see that the wrong block had been chosen could only edit its heading. Measured cause
+     * for wanting it: `acf/feature` is placed inside `acf/column` even with its AVOID guidance
+     * reaching the model, because prose is a label and not a gate.
+     *
+     * Values the new block has no field for are DROPPED and reported, not carried. Carrying them
+     * would hand the operator validation errors they did not cause; dropping them silently would
+     * lose their copy. The surviving set comes from the same field list the model's
+     * `get_block_fields` tool serves, so the editor and the model agree on what a block accepts.
+     */
+    const swapBlock = async (blockPath, nextBlock) => {
+        let keep = null;
+
+        try {
+            const res = await apiFetch({
+                path: addQueryArgs('/taipb/v1/blocks/fields', { block: nextBlock }),
+            });
+            keep = new Set(res.fields || []);
+        } catch {
+            // Without the field list we cannot say what survives, so change nothing rather than
+            // guess -- a wrong guess here deletes the operator's copy.
+            return;
+        }
+
+        const updated = JSON.parse(JSON.stringify(blockTree));
+        const node = nodeAt(updated, blockPath);
+
+        if (!node) {
+            return;
+        }
+
+        const dropped = Object.keys(node.data || {}).filter((f) => !keep.has(f));
+        const nextData = {};
+
+        Object.entries(node.data || {}).forEach(([field, value]) => {
+            if (keep.has(field)) {
+                nextData[field] = value;
+            }
+        });
+
+        node.block = nextBlock;
+        node.data = nextData;
+
+        setBlockTree(updated);
+
+        if (dropped.length > 0) {
+            setSwapNote(
+                `Changed to ${nextBlock}. ${dropped.length} value(s) had no field on it and were removed: ${dropped
+                    .slice(0, 6)
+                    .join(', ')}${dropped.length > 6 ? '…' : ''}`
+            );
+        } else {
+            setSwapNote(`Changed to ${nextBlock}.`);
+        }
+    };
+
+    /**
      * Update a field value deep in the block tree.
      * path is an array of indices into children/inner_blocks arrays,
      * ending with the field name.
      */
     const updateBlockField = (blockPath, fieldName, value) => {
         const updated = JSON.parse(JSON.stringify(blockTree));
-        let node = null;
-
-        // Navigate to the target block through the tree
-        // Path indices map to: children[0..n-1], then inner_blocks[n..n+m-1]
-        let current = updated.blocks;
-        for (let i = 0; i < blockPath.length; i++) {
-            const idx = blockPath[i];
-            if (i === 0) {
-                node = current[idx];
-            } else {
-                const childrenArr = node.children || [];
-                const innerBlocksArr = node.inner_blocks || [];
-                if (idx < childrenArr.length) {
-                    node = childrenArr[idx];
-                } else {
-                    node = innerBlocksArr[idx - childrenArr.length];
-                }
-            }
-        }
+        const node = nodeAt(updated, blockPath);
 
         if (node) {
             if (fieldName === '_content') {
@@ -86,6 +173,14 @@ export default function StructureReviewPanel({ postType, postId }) {
             </p>
 
             <div className="taipb-structure-tree">
+                {swapNote && (
+                    <Notice
+                        status="info"
+                        onRemove={() => setSwapNote('')}
+                    >
+                        {swapNote}
+                    </Notice>
+                )}
                 {blockTree.blocks.map((block, i) => (
                     <BlockNode
                         key={i}
@@ -93,6 +188,9 @@ export default function StructureReviewPanel({ postType, postId }) {
                         path={[i]}
                         depth={0}
                         onUpdate={updateBlockField}
+                        onSwap={swapBlock}
+                        parent=""
+                        ancestors={[]}
                         disabled={isBusy}
                     />
                 ))}
@@ -120,9 +218,119 @@ export default function StructureReviewPanel({ postType, postId }) {
 }
 
 /**
+ * What may legally sit at this position, asked of the server.
+ *
+ * The full manifest is 1.4 MB on a 48-block install -- 14,972 field definitions -- so the list is
+ * fetched per position rather than held in the editor. ~2.4 KB a call.
+ *
+ * Filtered server-side by the same three placement primitives the validator enforces, so the
+ * dropdown and the validator cannot disagree. Offering all 48 and letting validation reject the
+ * illegal ones would be worse than offering nothing, because the operator would reasonably trust
+ * the list.
+ *
+ * Returns an empty list on failure, which renders no selector at all -- the panel degrades to what
+ * it did before rather than showing a control that cannot be trusted.
+ */
+function usePlaceableBlocks(parent, ancestors) {
+    const [blocks, setBlocks] = useState([]);
+    const key = `${parent}|${ancestors.join(',')}`;
+
+    useEffect(() => {
+        // `null` means the picker is closed. Fetching for every node on mount would issue one
+        // request per block in the tree for lists nobody has asked to see.
+        if (parent === null) {
+            return undefined;
+        }
+
+        let live = true;
+
+        apiFetch({
+            path: addQueryArgs('/taipb/v1/blocks/placeable', { parent, ancestors }),
+        })
+            .then((res) => {
+                if (live) {
+                    setBlocks(res.blocks || []);
+                }
+            })
+            .catch(() => {
+                if (live) {
+                    setBlocks([]);
+                }
+            });
+
+        return () => {
+            live = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [key]);
+
+    return blocks;
+}
+
+/**
+ * The block's identity, as a control rather than a label.
+ *
+ * Deliberately starts as plain text and only becomes a dropdown when asked. A select on every node
+ * of a 30-block tree is a wall of dropdowns, and the common case is that the choice was right --
+ * the operator needs to CHANGE one, not confirm thirty.
+ *
+ * A core block is shown but not swappable: it has no ACF fields, so there is nothing to carry into
+ * a replacement, and the honest signal is the warning validation already raises about it.
+ */
+function BlockPicker({ current, shortName, parent, ancestors, disabled, onSwap }) {
+    const [open, setOpen] = useState(false);
+    const placeable = usePlaceableBlocks(open ? parent : null, ancestors);
+
+    if (current.startsWith('core/')) {
+        return <span className="taipb-block-node-name">{shortName}</span>;
+    }
+
+    if (!open) {
+        return (
+            <Button
+                variant="link"
+                className="taipb-block-node-name taipb-block-node-name--editable"
+                onClick={() => setOpen(true)}
+                disabled={disabled}
+                // The affordance has to say what clicking does; "section" alone reads as a label.
+                label={`Change the block used here (currently ${shortName})`}
+                showTooltip
+            >
+                {shortName}
+            </Button>
+        );
+    }
+
+    // Still loading, or nothing legal here -- either way a dropdown of one option is noise.
+    if (placeable.length === 0) {
+        return <span className="taipb-block-node-name">{shortName}</span>;
+    }
+
+    return (
+        <SelectControl
+            className="taipb-block-node-picker"
+            value={current}
+            disabled={disabled}
+            options={placeable.map((b) => ({
+                label: b.title || b.name.replace('acf/', ''),
+                value: b.name,
+            }))}
+            onChange={(next) => {
+                setOpen(false);
+
+                if (next !== current) {
+                    onSwap(next);
+                }
+            }}
+            __nextHasNoMarginBottom
+        />
+    );
+}
+
+/**
  * Renders a single block node in the tree, recursively rendering children.
  */
-function BlockNode({ node, path, depth, onUpdate, disabled }) {
+function BlockNode({ node, path, depth, onUpdate, onSwap, parent = '', ancestors = [], disabled }) {
     const blockName = node.block || '';
     const shortName = blockName.replace('acf/', '').replace('core/', '');
     const isCore = blockName.startsWith('core/');
@@ -143,7 +351,14 @@ function BlockNode({ node, path, depth, onUpdate, disabled }) {
             className={`taipb-block-node taipb-block-node--depth-${Math.min(depth, 4)}`}
         >
             <div className="taipb-block-node-header">
-                <span className="taipb-block-node-name">{shortName}</span>
+                <BlockPicker
+                    current={blockName}
+                    shortName={shortName}
+                    parent={parent}
+                    ancestors={ancestors}
+                    disabled={disabled}
+                    onSwap={(next) => onSwap(path, next)}
+                />
                 {isScaffold && data.col_width_0_width && (
                     <span className="taipb-block-node-meta">
                         col: {data.col_width_0_width}/12
@@ -176,6 +391,9 @@ function BlockNode({ node, path, depth, onUpdate, disabled }) {
                             path={[...path, i]}
                             depth={depth + 1}
                             onUpdate={onUpdate}
+                            onSwap={onSwap}
+                            parent={blockName}
+                            ancestors={[...ancestors, blockName]}
                             disabled={disabled}
                         />
                     ))}
@@ -196,6 +414,9 @@ function BlockNode({ node, path, depth, onUpdate, disabled }) {
                                 path={[...path, ibIndex]}
                                 depth={depth + 1}
                                 onUpdate={onUpdate}
+                                onSwap={onSwap}
+                                parent={blockName}
+                                ancestors={[...ancestors, blockName]}
                                 disabled={disabled}
                             />
                         );
