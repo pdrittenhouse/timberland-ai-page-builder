@@ -214,7 +214,7 @@ class FigmaStructure
      * order the layers panel has, and the measured file relies on position.
      *
      * @param array<string, mixed> $payload
-     * @return array{page: string, width: int, height: int, bands: array<int, array<string, mixed>>}|\WP_Error
+     * @return array{page: string, width: int, height: int, y: int, bands: array<int, array<string, mixed>>}|\WP_Error
      */
     public static function bands(array $payload, string $page_id, int $max_texts = 24)
     {
@@ -269,6 +269,13 @@ class FigmaStructure
             'page' => self::readable_name($page),
             'width' => (int) ($box['width'] ?? 0),
             'height' => (int) ($box['height'] ?? 0),
+            // FG5 needs each band's offset from ITS OWN page top, and band `y` is absolute canvas
+            // position -- page frames sit side by side on the canvas, so two identical headers in
+            // two frames have completely different `y`. Comparing the raw values finds nothing, or
+            // worse, finds a coincidence. The page's own origin is returned so the comparison can
+            // subtract it; `bands` keeps absolute `y` because its own sort and every existing
+            // consumer already read it that way.
+            'y' => (int) ($box['y'] ?? 0),
             'bands' => $bands,
         ];
     }

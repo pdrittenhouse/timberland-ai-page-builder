@@ -105,7 +105,28 @@ export default function LayoutPlanPanel({ postType, postId }) {
                                     {section.pattern_hint}
                                 </span>
                             )}
+                            {/*
+                                FG5: a LABEL, never a filter. Chrome is still in the plan and still
+                                generated; this only says which bands look like furniture, with the
+                                evidence, so the operator deletes deliberately rather than
+                                discovering an omission later. A wrong guess that deletes is
+                                invisible; a wrong guess that keeps costs one click.
+                            */}
+                            {section.chrome?.likely && (
+                                <span
+                                    className="taipb-layout-plan-chrome"
+                                    title={section.chrome.reason}
+                                >
+                                    likely page chrome
+                                </span>
+                            )}
                         </div>
+                        {section.chrome?.likely && (
+                            <p className="taipb-layout-plan-chrome-reason">
+                                {section.chrome.reason} Delete this section if you do not want it —
+                                it is kept by default.
+                            </p>
+                        )}
                         {section.content &&
                             Object.entries(section.content).map(
                                 ([key, value]) =>

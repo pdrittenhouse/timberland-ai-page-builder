@@ -93,8 +93,13 @@ class FigmaReview
      * nothing. The file had not changed, so nothing about the key changed either -- and "the data
      * is fine, the reader is new" is exactly the case a content-addressed key cannot see. A deploy
      * would have done the same to a real operator.
+     *
+     * 3: FG5's `chrome` hint per section, plus the page origin `bands()` now returns so offsets
+     * can be compared across frames. Same trap as `image_refs`, caught before shipping this time --
+     * a cached v2 reading has no `chrome` key at all, and a panel reading it would show every band
+     * as unlabelled while reporting a successful inspection.
      */
-    private const SHAPE_VERSION = 2;
+    private const SHAPE_VERSION = 3;
 
     /**
      * Candidate page designs in the linked node, each with the plan it would produce.
@@ -144,6 +149,8 @@ class FigmaReview
         $found = FigmaStructure::pages($payload, $depth);
         $candidates = [];
 
+        $read = [];
+
         foreach ($found['pages'] as $page) {
             $bands = FigmaStructure::bands($payload, $page['id']);
 
@@ -154,8 +161,24 @@ class FigmaReview
                 continue;
             }
 
-            $candidates[] = $page + [
-                'decomposition' => FigmaDecomposer::from_page($bands, $ref->file_key()),
+            $read[] = ['page' => $page, 'bands' => $bands];
+        }
+
+        /*
+         * FG5: chrome hints need EVERY frame, because repetition across frames is the signal and a
+         * single frame cannot show repetition. Computed once here, from the frames already read in
+         * the loop above -- this costs no additional Figma call, which is what made repetition the
+         * affordable signal rather than a second fetch.
+         */
+        $chrome = ChromeHints::label(array_column($read, 'bands'));
+
+        foreach ($read as $entry) {
+            $candidates[] = $entry['page'] + [
+                'decomposition' => FigmaDecomposer::from_page(
+                    $entry['bands'],
+                    $ref->file_key(),
+                    $chrome
+                ),
             ];
         }
 

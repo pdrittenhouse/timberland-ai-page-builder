@@ -35,7 +35,13 @@ class FigmaDecomposer
      * @param array{page: string, width: int, height: int, bands: array<int, array<string, mixed>>} $page
      * @return array{sections: array<int, array<string, mixed>>, overall_intent: string, suggested_pattern_ids: array<int, string>, figma: array<string, mixed>}
      */
-    public static function from_page(array $page, string $file_key = ''): array
+    /**
+     * @param array<string, array{likely: bool, reason: string, seen_in: int, of: int, comparable: bool}> $chrome
+     *        FG5 hints keyed by band id, from {@see ChromeHints::label()}. A LABEL only -- nothing
+     *        here filters on it, by design: a wrong guess that deletes is invisible, a wrong guess
+     *        that keeps costs one click.
+     */
+    public static function from_page(array $page, string $file_key = '', array $chrome = []): array
     {
         $sections = [];
 
@@ -68,6 +74,14 @@ class FigmaDecomposer
                     'width' => (int) ($band['width'] ?? 0),
                     'height' => (int) ($band['height'] ?? 0),
                 ],
+                /*
+                 * FG5: travels with the section so the review panel can show it, which is the
+                 * entire point -- the decision belongs to the person who can see their own file.
+                 * Absent when the hint could not be computed, which is distinct from `likely:
+                 * false` and must stay distinct: one means "we looked and it reads as content",
+                 * the other means "we could not look".
+                 */
+                'chrome' => $chrome[(string) ($band['id'] ?? '')] ?? null,
             ];
         }
 

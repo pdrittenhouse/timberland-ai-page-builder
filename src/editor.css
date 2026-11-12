@@ -302,6 +302,26 @@
     white-space: nowrap;
 }
 
+/*
+ * FG5. Amber, not red: this is a hint for a person who can see their own file, not a problem to
+ * fix. Red would read as "something is wrong here", and the section is kept on purpose.
+ */
+.taipb-layout-plan-chrome {
+    font-size: 11px;
+    color: #8a6116;
+    background: #fcf3dc;
+    border: 1px solid #f0d799;
+    padding: 1px 6px;
+    border-radius: 2px;
+    white-space: nowrap;
+}
+
+.taipb-layout-plan-chrome-reason {
+    font-size: 11px;
+    color: #757575;
+    margin: 4px 0 0;
+}
+
 .taipb-layout-plan-actions {
     display: flex;
     flex-direction: column;
