@@ -871,9 +871,11 @@ class RestController
      * is what lets them change it.
      *
      * **Filtered, not listed.** Offering all 48 and letting validation reject the illegal ones
-     * would be worse than offering none, because the operator would reasonably trust the list. The
-     * same three placement primitives the validator enforces decide what appears here, so the panel
-     * and the validator cannot disagree.
+     * would be worse than offering none, because the operator would reasonably trust the list.
+     *
+     * This once said "the panel and the validator cannot disagree" while reimplementing the three
+     * primitives locally, which made it a statement of intent rather than a property of the code.
+     * Both now call {@see BlockPlacement}, so it is true by construction.
      *
      * Names and titles only. The full manifest is **1.4 MB** on this install -- 14,972 field
      * definitions -- which is not something to pull into the editor to populate a dropdown; fields
@@ -885,10 +887,32 @@ class RestController
         $parent = (string) $request->get_param('parent');
         $ancestors = array_values(array_filter((array) $request->get_param('ancestors'), 'is_string'));
 
+        return new \WP_REST_Response([
+            'blocks' => self::placeable_blocks($manifest, $parent, $ancestors),
+            'parent' => $parent,
+        ], 200);
+    }
+
+    /**
+     * The filtering itself, with no request or response around it.
+     *
+     * Public and parameterised so the test can drive THIS code rather than a reconstruction of it.
+     * The previous version of the test reached a private method through reflection and reimplemented
+     * the loop around it, which meant it still passed while the endpoint and the validator used two
+     * different rule implementations -- the exact divergence it was written to catch.
+     *
+     * @param array<string, mixed> $manifest
+     * @param list<string>         $ancestors open stack above this position, outermost first
+     *
+     * @return list<array{name: string, title: string, is_container: bool}>
+     */
+    public static function placeable_blocks(array $manifest, string $parent, array $ancestors): array
+    {
+        $blocks = $manifest['blocks'] ?? [];
         $out = [];
 
-        foreach ($manifest['blocks'] ?? [] as $name => $block) {
-            if (!self::may_sit_here($name, $block, $parent, $ancestors, $manifest)) {
+        foreach ($blocks as $name => $block) {
+            if (!BlockPlacement::allows((string) $name, $parent, $ancestors, $blocks)) {
                 continue;
             }
 
@@ -899,45 +923,7 @@ class RestController
             ];
         }
 
-        return new \WP_REST_Response(['blocks' => $out, 'parent' => $parent], 200);
-    }
-
-    /**
-     * The three positive placement rules, applied exactly as `MarkupValidator` applies them.
-     *
-     * @param array<string, mixed> $block
-     * @param array<int, string>   $ancestors the open stack above this position, outermost first
-     * @param array<string, mixed> $manifest
-     */
-    private static function may_sit_here(
-        string $name,
-        array $block,
-        string $parent,
-        array $ancestors,
-        array $manifest
-    ): bool {
-        $allowed_parents = $block['parent'] ?? null;
-
-        if (is_array($allowed_parents) && $allowed_parents !== [] && !in_array($parent, $allowed_parents, true)) {
-            return false;
-        }
-
-        $required_ancestors = $block['ancestor'] ?? null;
-
-        if (is_array($required_ancestors) && $required_ancestors !== []
-            && [] === array_intersect($ancestors, $required_ancestors)) {
-            return false;
-        }
-
-        $parent_allows = '' !== $parent
-            ? ($manifest['blocks'][$parent]['allowed_blocks'] ?? null)
-            : null;
-
-        if (is_array($parent_allows) && $parent_allows !== [] && !in_array($name, $parent_allows, true)) {
-            return false;
-        }
-
-        return true;
+        return $out;
     }
 
     /**

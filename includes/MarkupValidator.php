@@ -168,43 +168,32 @@ class MarkupValidator
 
             $where = '' !== $parent ? 'inside `' . $parent . '`' : 'at the top level';
 
-            // `parent` -- must be DIRECTLY inside one of these.
-            $allowed = $blocks[$name]['parent'] ?? null;
+            // The three positive primitives live in BlockPlacement, which `/blocks/placeable`
+            // also calls -- so the panel cannot offer a block this would reject. Formatting a
+            // violation is this class's job; deciding what counts as one is not.
+            foreach (BlockPlacement::violations($name, $parent, $stack, $blocks) as $violation) {
+                $allowed = '`' . implode('`, `', $violation['allowed']) . '`';
 
-            if (is_array($allowed) && $allowed !== [] && !in_array($parent, $allowed, true)) {
-                $errors[] = sprintf(
-                    'Block `%s` may only be placed inside %s, but it is %s.',
-                    $name,
-                    '`' . implode('`, `', $allowed) . '`',
-                    $where
-                );
-            }
-
-            // `ancestor` -- must be somewhere BENEATH one of these, at any depth. Distinct from
-            // `parent` and checked against the whole stack, not the immediate parent, or a block
-            // legitimately nested two levels down would be reported as misplaced.
-            $ancestors = $blocks[$name]['ancestor'] ?? null;
-
-            if (is_array($ancestors) && $ancestors !== [] && [] === array_intersect($stack, $ancestors)) {
-                $errors[] = sprintf(
-                    'Block `%s` may only appear beneath %s, but it is %s.',
-                    $name,
-                    '`' . implode('`, `', $ancestors) . '`',
-                    $where
-                );
-            }
-
-            // `allowedBlocks` -- the CONTAINER's whitelist, so this is the one rule owned by the
-            // parent rather than the child.
-            $parent_allows = '' !== $parent ? ($blocks[$parent]['allowed_blocks'] ?? null) : null;
-
-            if (is_array($parent_allows) && $parent_allows !== [] && !in_array($name, $parent_allows, true)) {
-                $errors[] = sprintf(
-                    'Block `%s` is not accepted by `%s`, which allows only %s.',
-                    $name,
-                    $parent,
-                    '`' . implode('`, `', $parent_allows) . '`'
-                );
+                $errors[] = match ($violation['rule']) {
+                    BlockPlacement::PARENT => sprintf(
+                        'Block `%s` may only be placed inside %s, but it is %s.',
+                        $name,
+                        $allowed,
+                        $where
+                    ),
+                    BlockPlacement::ANCESTOR => sprintf(
+                        'Block `%s` may only appear beneath %s, but it is %s.',
+                        $name,
+                        $allowed,
+                        $where
+                    ),
+                    BlockPlacement::ALLOWED_BLOCKS => sprintf(
+                        'Block `%s` is not accepted by `%s`, which allows only %s.',
+                        $name,
+                        $parent,
+                        $allowed
+                    ),
+                };
             }
 
             if (!$self_closing) {
