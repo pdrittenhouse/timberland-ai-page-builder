@@ -124,6 +124,36 @@ class RestController
             'permission_callback' => [$this, 'can_edit'],
         ]);
 
+        register_rest_route(self::NAMESPACE, '/checks/pending', [
+            'methods' => 'GET',
+            'callback' => [$this, 'handle_pending_checks'],
+            'permission_callback' => [$this, 'can_edit'],
+            'args' => [
+                'limit' => [
+                    'type' => 'integer',
+                    'default' => 20,
+                    'sanitize_callback' => static fn($v): int => max(1, min(100, (int) $v)),
+                ],
+            ],
+        ]);
+
+        register_rest_route(self::NAMESPACE, '/checks/report', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_check_report'],
+            'permission_callback' => [$this, 'can_edit'],
+            'args' => [
+                'post_id' => [
+                    'type' => 'integer',
+                    'required' => true,
+                    'sanitize_callback' => static fn($v): int => (int) $v,
+                ],
+                'report' => [
+                    'type' => 'object',
+                    'required' => true,
+                ],
+            ],
+        ]);
+
         register_rest_route(self::NAMESPACE, '/decompose', [
             'methods' => 'POST',
             'callback' => [$this, 'handle_decompose'],
@@ -924,6 +954,47 @@ class RestController
         }
 
         return $out;
+    }
+
+    /**
+     * GET /checks/pending — published generated pages whose post-publish checks are owed.
+     *
+     * VP4. The gate needs Playwright, ~7 s and a real Chromium, none of which belongs in a
+     * WordPress request, so the direction is inverted: this lists what is owed and the suite
+     * pulls. See {@see CheckQueue} for why the list is derived from the posts rather than kept.
+     */
+    public function handle_pending_checks(\WP_REST_Request $request): \WP_REST_Response
+    {
+        $limit = (int) $request->get_param('limit');
+
+        return new \WP_REST_Response(['pending' => CheckQueue::pending($limit)], 200);
+    }
+
+    /**
+     * POST /checks/report — store what the suite found.
+     *
+     * The payload comes from outside WordPress, so `CheckQueue` keeps only the shape it defines
+     * and reads `checked_modified` from the post itself rather than from the body -- a page edited
+     * mid-run must stay pending rather than be marked checked against markup it no longer has.
+     */
+    public function handle_check_report(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
+    {
+        $post_id = (int) $request->get_param('post_id');
+
+        if ($post_id <= 0 || !get_post($post_id)) {
+            return new \WP_Error('taipb_unknown_post', 'No such post.', ['status' => 404]);
+        }
+
+        // The capability is `edit_posts`, which is not the same as being allowed to write to THIS
+        // post -- a Contributor can edit their own drafts and nothing else. Checked per post for
+        // the same reason the upload route is gated separately from the generate route.
+        if (!current_user_can('edit_post', $post_id)) {
+            return new \WP_Error('taipb_forbidden', 'Not allowed to record a report for this post.', ['status' => 403]);
+        }
+
+        CheckQueue::record_report($post_id, (array) $request->get_param('report'));
+
+        return new \WP_REST_Response(['stored' => true, 'report' => CheckQueue::report_for($post_id)], 200);
     }
 
     /**

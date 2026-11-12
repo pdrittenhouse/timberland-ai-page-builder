@@ -210,6 +210,14 @@ class MarkupGenerator
         // Save to history
         $this->save_history($user_id, $prompt, $clean_markup, $post_id, $post_type, $api_response, $final_validation);
 
+        // VP4: the post-publish checks need a browser, which WordPress must not launch. Marking
+        // the post here is all this side does -- `CheckQueue` derives what is owed from the post
+        // itself, and the suite pulls. Marked at GENERATION rather than at publish because a
+        // draft has no URL to check yet; `pending()` filters on status.
+        if (null !== $post_id) {
+            CheckQueue::mark_generated((int) $post_id);
+        }
+
         // Recorded so the accumulated log can answer "what should we build next" with evidence.
         if ($gap_tool !== null && $gap_tool->has_gaps()) {
             GapLog::record($gap_tool->gaps(), $prompt, $user_id);
