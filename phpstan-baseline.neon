@@ -63,3 +63,22 @@ parameters:
 			identifier: nullsafe.neverNull
 			count: 2
 			path: includes/RestController.php
+
+		# FG1's image path hands `MessageParam::with()` a plain array for the image block instead of
+		# `ImageBlockParam`, which its docblock does not allow (the native signature is
+		# `string|array`, so this is a docblock constraint, not a runtime one).
+		#
+		# NOT fixable here, and not laziness: nested inside a `MessageParam`, the SDK drops its own
+		# `#[Api('media_type')]` rename and serialises the field as `mediaType`, so the API rejects
+		# the request with `source.base64.media_type: Field required`. Verified by encoding both
+		# forms -- `Base64ImageSource` alone emits `media_type` correctly, the same object inside a
+		# `MessageParam` does not. The text path never hits it because `TextBlockParam` has no
+		# renamed fields.
+		#
+		# Delete this entry when the SDK fixes the nested rename and the typed form can go back.
+		-
+			message: '#^Parameter \$content of static method Anthropic\\Messages\\MessageParam\:\:with\(\) expects#'
+			identifier: argument.type
+			count: 1
+			path: includes/ClaudeClient.php
+

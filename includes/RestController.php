@@ -296,6 +296,22 @@ class RestController
             ],
         ]);
 
+        register_rest_route(self::NAMESPACE, '/decompose-image', [
+            'methods' => 'POST',
+            'callback' => [$this, 'handle_decompose_image'],
+            // `can_edit`, not `can_upload`: this READS an attachment the operator has already put
+            // in the library. Requiring upload_files would lock out a Contributor who can
+            // legitimately generate from an image somebody else uploaded.
+            'permission_callback' => [$this, 'can_edit'],
+            'args' => [
+                'attachment_id' => [
+                    'required' => true,
+                    'type' => 'integer',
+                    'sanitize_callback' => 'absint',
+                ],
+            ],
+        ]);
+
         register_rest_route(self::NAMESPACE, '/figma/inspect', [
             'methods' => 'POST',
             'callback' => [$this, 'handle_figma_inspect'],
@@ -981,6 +997,76 @@ class RestController
         $limit = (int) $request->get_param('limit');
 
         return new \WP_REST_Response(['pending' => CheckQueue::pending($limit)], 200);
+    }
+
+    /**
+     * POST /decompose-image — FG1's reduced-fidelity input.
+     *
+     * Takes an ATTACHMENT ID, not an upload and not a URL. The media library has already done the
+     * work: WordPress validated the type on upload, the capability check for putting it there
+     * happened then, and the bytes are on disk. Accepting a URL instead would mean fetching a host
+     * the caller names, which is the SSRF surface FG2 closed on the Figma side, and accepting a
+     * raw upload here would duplicate `wp_handle_upload`'s validation badly.
+     *
+     * The response carries `fidelity: reduced` in the payload rather than only in the UI, because
+     * a banner can be dismissed and a downstream consumer still needs to know what it is holding.
+     */
+    public function handle_decompose_image(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
+    {
+        $id = (int) $request->get_param('attachment_id');
+        $path = get_attached_file($id);
+
+        if (!$id || 'attachment' !== get_post_type($id) || !$path || !file_exists($path)) {
+            return new \WP_Error('taipb_no_attachment', 'No such image in the media library.', ['status' => 404]);
+        }
+
+        if (!current_user_can('read_post', $id)) {
+            return new \WP_Error('taipb_forbidden', 'Not allowed to read this attachment.', ['status' => 403]);
+        }
+
+        // The STORED type, not the extension and not the client's word for it.
+        $media_type = (string) get_post_mime_type($id);
+
+        if (!in_array($media_type, ScreenshotDecomposer::ALLOWED_TYPES, true)) {
+            return new \WP_Error(
+                'taipb_unsupported_image',
+                sprintf('`%s` cannot be read as a design. Use PNG, JPEG, GIF or WebP.', $media_type),
+                ['status' => 400]
+            );
+        }
+
+        try {
+            $client = LLMClientFactory::create();
+        } catch (\Throwable $e) {
+            return new \WP_Error('taipb_no_client', Redact::credentials($e->getMessage()), ['status' => 500]);
+        }
+
+        $bytes = (string) file_get_contents($path);
+
+        try {
+            $plan = (new ScreenshotDecomposer($client))->from_image($bytes, $media_type);
+        } catch (\Throwable $e) {
+            // The provider's own message, redacted. An unverified vision path is one of the ways
+            // this fails, so the warning below travels with the error rather than replacing it.
+            return new \WP_Error('taipb_image_failed', Redact::credentials($e->getMessage()), [
+                'status' => 502,
+                'vision_verified' => $client->vision_is_verified(),
+            ]);
+        }
+
+        return new \WP_REST_Response([
+            'decomposition' => $plan,
+            'fidelity' => 'reduced',
+            /*
+             * Surfaced on SUCCESS too, not only on failure. The OpenAI image path has never been
+             * run against a funded account, so a plausible-looking plan from it is exactly the
+             * case where nobody would think to doubt the wiring.
+             */
+            'vision_verified' => $client->vision_is_verified(),
+            'notice' => $client->vision_is_verified()
+                ? 'Derived from an image: no frame names, no measured order and no design provenance. A Figma URL gives all three.'
+                : 'Derived from an image using a provider whose image path has not been verified against a live account. Treat the result as unconfirmed.',
+        ], 200);
     }
 
     /**

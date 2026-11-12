@@ -275,6 +275,97 @@ class ClaudeClient implements LLMClientInterface
     }
 
     /**
+     * FG1's reduced-fidelity path: generate from an image instead of a Figma URL.
+     *
+     * Bytes, never a URL. `ImageBlockParam` also accepts a `URLImageSource`, which would have the
+     * provider fetch a host we name -- the same SSRF shape FG2 closed on the Figma side, except
+     * the request would come from the provider's network instead of ours. Base64 keeps the fetch
+     * here, where the capability checks already are.
+     *
+     * The image goes BEFORE the prompt in the content array, which is Anthropic's documented
+     * ordering for image-plus-question requests.
+     *
+     * @return array{content: string, input_tokens: int, output_tokens: int, model: string, stop_reason: string}
+     */
+    public function generate_with_image(
+        string $system_prompt,
+        string $user_prompt,
+        string $image_base64,
+        string $media_type
+    ): array {
+        $prev_timeout = ini_get('default_socket_timeout');
+        ini_set('default_socket_timeout', '600');
+
+        try {
+            $response = $this->client->messages->create(
+                model: $this->model,
+                maxTokens: $this->max_tokens,
+                system: $system_prompt,
+                messages: [
+                    MessageParam::with(
+                        role: 'user',
+                        content: [
+                            /*
+                             * A PLAIN ARRAY, not `ImageBlockParam`. Do not "tidy" this into the
+                             * SDK's own class: nested inside a `MessageParam`, the SDK drops its
+                             * own `#[Api('media_type')]` rename and serialises the field as
+                             * `mediaType`, so the API rejects the request with
+                             * `source.base64.media_type: Field required`. Verified by encoding
+                             * both forms -- `Base64ImageSource` alone emits `media_type`
+                             * correctly, and the same object inside a `MessageParam` does not.
+                             *
+                             * The text path does not hit this because `TextBlockParam` has no
+                             * renamed fields, which is why the bug is invisible everywhere else
+                             * in this client.
+                             */
+                            [
+                                'type' => 'image',
+                                'source' => [
+                                    'type' => 'base64',
+                                    'media_type' => $media_type,
+                                    'data' => $image_base64,
+                                ],
+                            ],
+                            TextBlockParam::with(text: $user_prompt),
+                        ],
+                    ),
+                ],
+            );
+
+            $content = '';
+
+            foreach ($response->content as $block) {
+                if ($block->type === 'text') {
+                    $content = $block->text;
+                    break;
+                }
+            }
+
+            return [
+                'content' => $content,
+                'input_tokens' => $response->usage->inputTokens,
+                'output_tokens' => $response->usage->outputTokens,
+                'model' => $response->model,
+                'stop_reason' => $response->stopReason,
+            ];
+        } catch (AuthenticationError $e) {
+            throw new \RuntimeException('Invalid API key: ' . Redact::credentials($e->getMessage()));
+        } catch (RateLimitError $e) {
+            throw new \RuntimeException('Anthropic rate limit reached. Please wait and try again.');
+        } catch (AnthropicError $e) {
+            throw new \RuntimeException('Claude API error: ' . Redact::credentials($e->getMessage()));
+        } finally {
+            ini_set('default_socket_timeout', (string) $prev_timeout);
+        }
+    }
+
+    /** Verified live on 2026-11-11: a synthetic 5-band design came back as 5 sections in order. */
+    public function vision_is_verified(): bool
+    {
+        return true;
+    }
+
+    /**
      * Send a generation request with a retry that includes validation feedback.
      */
     public function generate_with_retry(string $system_prompt, string $user_prompt, array $validation_errors): array

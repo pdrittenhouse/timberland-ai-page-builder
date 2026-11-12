@@ -30,6 +30,11 @@ const DEFAULT_STATE = {
     figmaCandidates: null,
     figmaMeta: null,
     isInspectingFigma: false,
+
+    // FG1: set when a plan came from pixels rather than a Figma file, so the review panel can
+    // keep saying so after the panel that produced it is gone.
+    imageFidelityNotice: '',
+    imageVisionVerified: true,
     figmaError: null,
 };
 
@@ -289,6 +294,54 @@ const actions = {
             }
 
             dispatch.setDecomposition(plan);
+        };
+    },
+
+    /**
+     * FG1's reduced-fidelity input: derive a plan from an uploaded image.
+     *
+     * Dispatches `setDecomposition` exactly as the Figma path and a typed prompt do, so the same
+     * review panel takes over and there is no second confirm step to keep correct. The whole point
+     * is that a screenshot is a WORSE INPUT to the same pipeline, not a different pipeline.
+     */
+    decomposeImage(attachmentId, attachmentName) {
+        return async ({ dispatch, select: storeSelect }) => {
+            dispatch({ type: 'SET_INSPECTING_FIGMA', isInspectingFigma: true });
+            dispatch.setError(null);
+
+            try {
+                const res = await apiFetch({
+                    path: '/taipb/v1/decompose-image',
+                    method: 'POST',
+                    data: { attachment_id: attachmentId },
+                });
+
+                const existing = (storeSelect.getPrompt() || '').trim();
+
+                if (existing === '') {
+                    dispatch.setPrompt(
+                        `Build this page from the uploaded design "${attachmentName || 'image'}". ` +
+                            'Treat the text in the plan as the real copy unless it reads as placeholder.'
+                    );
+                }
+
+                // Carried into the store so the review panel can keep saying "reduced" -- the
+                // notice is on the payload, not only on the screen that produced it.
+                dispatch({
+                    type: 'SET_IMAGE_FIDELITY',
+                    notice: res.notice || '',
+                    visionVerified: res.vision_verified !== false,
+                });
+
+                dispatch.setDecomposition(res.decomposition);
+            } catch (err) {
+                // The server's message. A local error map in a panel has already hidden one real
+                // failure in this plugin, and this route's failures are genuinely different from
+                // each other -- an unsupported type, an oversized image, an unverified provider.
+                dispatch.setError(err?.message || 'Could not read that image as a design.');
+            } finally {
+                dispatch({ type: 'SET_INSPECTING_FIGMA', isInspectingFigma: false });
+            }
         };
     },
 
@@ -869,6 +922,13 @@ const reducer = (state = DEFAULT_STATE, action) => {
         case 'SET_INSPECTING_FIGMA':
             return { ...state, isInspectingFigma: action.isInspectingFigma };
 
+        case 'SET_IMAGE_FIDELITY':
+            return {
+                ...state,
+                imageFidelityNotice: action.notice,
+                imageVisionVerified: action.visionVerified,
+            };
+
         case 'SET_FIGMA_ERROR':
             return { ...state, figmaError: action.figmaError };
 
@@ -945,6 +1005,8 @@ const selectors = {
     getFigmaCandidates: (state) => state.figmaCandidates,
     getFigmaMeta: (state) => state.figmaMeta,
     isInspectingFigma: (state) => state.isInspectingFigma,
+    getImageFidelityNotice: (state) => state.imageFidelityNotice,
+    isImageVisionVerified: (state) => state.imageVisionVerified,
     getFigmaError: (state) => state.figmaError,
     getModel: (state) => state.selectedModel,
     getGenerationMode: (state) => state.generationMode,

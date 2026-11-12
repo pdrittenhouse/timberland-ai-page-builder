@@ -47,8 +47,29 @@ final class FakeLLMClient implements LLMClientInterface {
         return $client;
     }
 
+    /** @var array<string, string>|null what generate_with_image() was last handed */
+    public ?array $last_image = null;
+
+    /** Flipped by a test that needs the unverified-provider branch. */
+    public bool $vision_verified = true;
+
     public function generate( string $system_prompt, string $user_prompt ): array {
         return $this->respond( $system_prompt, $user_prompt, array() );
+    }
+
+    /**
+     * FG1's image path. Records what it was handed so a test can assert the bytes were sent as
+     * BYTES -- a caller that passed a URL instead would move the fetch onto the provider's
+     * network, which is the SSRF shape FG2 closed on the Figma side.
+     */
+    public function generate_with_image( string $system_prompt, string $user_prompt, string $image_base64, string $media_type ): array {
+    	$this->last_image = array( 'data' => $image_base64, 'media_type' => $media_type );
+
+    	return $this->respond( $system_prompt, $user_prompt, array() );
+    }
+
+    public function vision_is_verified(): bool {
+    	return $this->vision_verified;
     }
 
     public function generate_with_retry( string $system_prompt, string $user_prompt, array $validation_errors ): array {

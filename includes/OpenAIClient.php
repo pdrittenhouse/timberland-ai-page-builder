@@ -220,6 +220,79 @@ class OpenAIClient implements LLMClientInterface
     }
 
     /**
+     * FG1's reduced-fidelity path for OpenAI.
+     *
+     * **NOT VERIFIED. Written to the API documentation and never executed**, because this account
+     * has no credits. `vision_is_verified()` returns false so callers can say so rather than
+     * letting a first failure read as an opaque provider error -- which, on an unfunded account,
+     * is also exactly what a billing problem looks like.
+     *
+     * @todo Exercise this against a funded account and finish it: confirm the content-part shape
+     *       is still `image_url` with a data: URI for the configured model, check the token
+     *       accounting fields come back where the text path expects them, and check whether this
+     *       model wants `max_completion_tokens` instead of `max_tokens` -- this uses `max_tokens`
+     *       only because the verified text path above does, not because it was confirmed for an
+     *       image request. Then flip `vision_is_verified()`. Until that happens, treat Claude as
+     *       the only image path.
+     *
+     * A data: URI rather than a remote URL on purpose: a remote URL would have OpenAI fetch a host
+     * we name, which is the SSRF shape FG2 closed on the Figma side, moved to someone else's
+     * network. The bytes stay here, where the capability checks are.
+     *
+     * @return array{content: string, input_tokens: int, output_tokens: int, model: string, stop_reason: string}
+     */
+    public function generate_with_image(
+        string $system_prompt,
+        string $user_prompt,
+        string $image_base64,
+        string $media_type
+    ): array {
+        $response = $this->client->chat()->create([
+            'model' => $this->model,
+            'max_tokens' => $this->max_tokens,
+            'messages' => [
+                ['role' => 'system', 'content' => $system_prompt],
+                [
+                    'role' => 'user',
+                    'content' => [
+                        [
+                            'type' => 'image_url',
+                            'image_url' => ['url' => 'data:' . $media_type . ';base64,' . $image_base64],
+                        ],
+                        ['type' => 'text', 'text' => $user_prompt],
+                    ],
+                ],
+            ],
+        ]);
+
+        $choice = $response->choices[0] ?? null;
+
+        // No `??` on usage or model: the SDK declares both non-nullable, so a fallback there would
+        // be dead code that reads as defensive. `$choice` genuinely can be absent -- an empty
+        // `choices` array is a real response shape -- so it is checked once, explicitly, rather
+        // than with a nullsafe chain on both fields.
+        return [
+            'content' => null === $choice ? '' : (string) $choice->message->content,
+            'input_tokens' => (int) $response->usage->promptTokens,
+            'output_tokens' => (int) $response->usage->completionTokens,
+            'model' => (string) $response->model,
+            'stop_reason' => null === $choice ? '' : (string) $choice->finishReason,
+        ];
+    }
+
+    /**
+     * False, and deliberately so -- see `generate_with_image()`.
+     *
+     * The code exists and may well work. What does not exist is any run of it, so nothing here can
+     * distinguish a wiring bug from an unfunded account, and a caller that assumed otherwise would
+     * send an operator to debug the wrong thing.
+     */
+    public function vision_is_verified(): bool
+    {
+        return false;
+    }
+
+    /**
      * Send a generation request with a retry that includes validation feedback.
      */
     public function generate_with_retry(string $system_prompt, string $user_prompt, array $validation_errors): array

@@ -4,6 +4,7 @@ import ModelSelector from './ModelSelector';
 import GenerationModeToggle from './GenerationModeToggle';
 import PromptInput from './PromptInput';
 import FigmaImportPanel from './FigmaImportPanel';
+import ImageDecomposePanel from './ImageDecomposePanel';
 import LayoutPlanPanel from './LayoutPlanPanel';
 import StructureReviewPanel from './StructureReviewPanel';
 import PatternMatch from './PatternMatch';
@@ -31,6 +32,9 @@ export default function Sidebar() {
                 <GenerationModeToggle />
                 <PromptInput postType={postType} postId={postId} />
                 <FigmaImportPanel />
+                {/* Below the Figma panel on purpose: a URL is strictly more capable, so the
+                    better input is the one you reach first. */}
+                <ImageDecomposePanel />
                 <LayoutPlanPanel postType={postType} postId={postId} />
                 <StructureReviewPanel postType={postType} postId={postId} />
                 <PatternMatch postType={postType} postId={postId} />

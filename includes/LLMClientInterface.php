@@ -28,6 +28,40 @@ interface LLMClientInterface
     public function generate_with_retry(string $system_prompt, string $user_prompt, array $validation_errors): array;
 
     /**
+     * Send a generation request that includes an image.
+     *
+     * **FG1: the reduced-fidelity path.** A Figma URL yields structure AND pixels -- frame names,
+     * bounding boxes, reading order, text by prominence -- so it is strictly more capable. This
+     * exists for the client who sends a screenshot and has no Figma file at all, and what it gets
+     * back is a vision model's impression: no frame names, no measured order, no gap reporting.
+     * The UI must say so, or the worse results get attributed to the model.
+     *
+     * `$media_type` is an IANA type the provider accepts (`image/png`, `image/jpeg`,
+     * `image/gif`, `image/webp`). `$image_base64` is raw base64 with no data: prefix -- callers
+     * pass bytes, not URLs, because a URL would make the provider fetch an arbitrary host on our
+     * behalf, which is the SSRF surface FG2 already closed on the Figma side.
+     *
+     * @return array{content: string, input_tokens: int, output_tokens: int, model: string, stop_reason: string}
+     */
+    public function generate_with_image(
+        string $system_prompt,
+        string $user_prompt,
+        string $image_base64,
+        string $media_type
+    ): array;
+
+    /**
+     * Whether this provider's image path has been exercised against a live account.
+     *
+     * Not "does the provider support vision" -- both do -- but "do we know OURS works". The
+     * OpenAI path is written to its API documentation and has never run, because the account has
+     * no credits. Shipping it as though it were verified would turn a first failure into an opaque
+     * provider error that nobody can tell apart from a billing problem, so callers can warn
+     * instead.
+     */
+    public function vision_is_verified(): bool;
+
+    /**
      * Run a generation that can fetch its own context through tools.
      *
      * **Why this is a client concern.** The turn loop is pure provider shape -- Anthropic answers
