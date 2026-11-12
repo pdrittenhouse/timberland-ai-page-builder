@@ -3,8 +3,11 @@ declare( strict_types=1 );
 
 namespace TimberlandAIPageBuilder\Tests\Unit;
 
+use Brain\Monkey\Functions;
 use PHPUnit\Framework\TestCase;
 use TimberlandAIPageBuilder\CuratedContext;
+use TimberlandAIPageBuilder\CuratedOverrides;
+use TimberlandAIPageBuilder\Tests\Fixture\WordPressStubs;
 
 /**
  * `CuratedContext` — the ONLY thing this plugin reads from the framework's build.
@@ -16,6 +19,27 @@ use TimberlandAIPageBuilder\CuratedContext;
  * again, which is the mistake this replaced.
  */
 final class CuratedContextTest extends TestCase {
+    use WordPressStubs;
+
+    /**
+     * UC3 put a site-override layer in front of both curated readers, so these now pass through
+     * `get_option()` and `apply_filters()`. Stubbed to "no override stored, no filter attached" --
+     * the shipped default must be what a site with nothing configured sees, which is the property
+     * every assertion below depends on.
+     */
+    protected function setUp(): void {
+        $this->stubWordPress();
+
+        Functions\when( 'get_option' )->justReturn( [] );
+        Functions\when( 'apply_filters' )->alias( static fn( $hook, $value ) => $value );
+
+        CuratedOverrides::flush_cache();
+    }
+
+    protected function tearDown(): void {
+        CuratedOverrides::flush_cache();
+        $this->unstubWordPress();
+    }
 
     private function context(): CuratedContext {
         return new CuratedContext( dirname( __DIR__ ) . '/Fixture/manifests' );

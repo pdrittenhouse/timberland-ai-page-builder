@@ -67,6 +67,89 @@ class Plugin
             'taipb-settings',
             [$this, 'render_settings_page']
         );
+
+        // UC3's own screen. Separate from the settings page because ~48 blocks x 3 fields would
+        // bury every other setting, and `manage_options` because this changes what the model is
+        // told site-wide -- it is configuration, not content.
+        add_submenu_page(
+            'options-general.php',
+            'AI Block Curation',
+            'AI Block Curation',
+            'manage_options',
+            'taipb-curated',
+            [$this, 'render_curated_page']
+        );
+    }
+
+    /**
+     * UC3's screen: every registered block, its shipped guidance, and this site's override.
+     *
+     * The block LIST comes from `WP_Block_Type_Registry`, not from the curation artifact. The
+     * registry is the authority on what will actually render -- already resolved across framework,
+     * plugin, parent and child, and already filtered by plugin activation -- and listing from the
+     * artifact instead would hide exactly the blocks most worth curating: the ones with no
+     * harvested documentation.
+     */
+    public function render_curated_page(): void
+    {
+        if (!current_user_can('manage_options')) {
+            wp_die('Not allowed.');
+        }
+
+        if (isset($_POST['taipb_curated_nonce'])
+            && wp_verify_nonce(sanitize_key(wp_unslash($_POST['taipb_curated_nonce'])), 'taipb_save_curated')
+        ) {
+            // `wp_unslash` before anything else: WordPress slashes $_POST, so an apostrophe in
+            // guidance arrives as `\'` and would otherwise accumulate a backslash on every save.
+            //
+            // `map_deep` with `wp_kses_post` rather than `sanitize_text_field`: `configuration` is
+            // multi-line prose and newlines are meaningful in it. `CuratedOverrides::save()`
+            // sanitises again on the way in -- deliberately, since the option can also be written
+            // by WP-CLI or a migration, neither of which comes through here.
+            $posted = isset($_POST['taipb_curated'])
+                ? map_deep(wp_unslash($_POST['taipb_curated']), 'wp_kses_post')
+                : [];
+
+            CuratedOverrides::save(is_array($posted) ? $posted : []);
+
+            add_settings_error('taipb_curated', 'saved', 'Curation saved.', 'success');
+        }
+
+        settings_errors('taipb_curated');
+
+        $curated = new CuratedContext();
+        $shipped = $curated->shipped_index();
+        $overrides = CuratedOverrides::stored();
+        $blocks = [];
+
+        foreach (\WP_Block_Type_Registry::get_instance()->get_all_registered() as $name => $type) {
+            if (!str_starts_with((string) $name, 'acf/')) {
+                continue;
+            }
+
+            $slug = substr((string) $name, 4);
+
+            $blocks[$slug] = [
+                'title' => (string) ($type->title ?: $slug),
+                // The shipped default, NOT the merged value: the screen's whole job is to show
+                // what a field falls back to, and showing the override as its own default would
+                // make an override look like something the block ships with.
+                'default' => [
+                    'best_for' => (string) ($shipped[$slug]['best_for'] ?? ''),
+                    'avoid_when' => (string) ($shipped[$slug]['avoid_when'] ?? ''),
+                    'configuration' => $curated->shipped_configuration_for($slug),
+                ],
+                'override' => $overrides[$slug] ?? [],
+            ];
+        }
+
+        ksort($blocks);
+
+        $template = TAIPB_PLUGIN_DIR . 'templates/admin-curated.php';
+
+        if (file_exists($template)) {
+            include $template;
+        }
     }
 
     public function register_settings(): void

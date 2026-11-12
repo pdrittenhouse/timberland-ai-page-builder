@@ -67,6 +67,9 @@ class CuratedContext
      *                         readers look and where the committed copies live. The child
      *                         theme's build reads the parent's rather than producing its own.
      */
+    /** @var array<string, array{best_for: string, avoid_when: string}>|null */
+    private ?array $shipped = null;
+
     public function __construct(?string $dir = null)
     {
         $this->dir = rtrim($dir ?? get_template_directory() . '/src/manifests', '/');
@@ -81,13 +84,21 @@ class CuratedContext
      *
      * @return array<string, array{best_for: string, avoid_when: string}>
      */
-    public function selection_index(): array
+    /**
+     * The build artifact's curation, with no site override applied.
+     *
+     * What the block itself ships. The admin screen shows this beside each override field, since
+     * an empty field inherits it and "what is in force" is otherwise unknowable from the form.
+     *
+     * @return array<string, array{best_for: string, avoid_when: string}> keyed by bare slug
+     */
+    public function shipped_index(): array
     {
-        if ($this->index !== null) {
-            return $this->index;
+        if (null !== $this->shipped) {
+            return $this->shipped;
         }
 
-        $this->index = [];
+        $this->shipped = [];
         $decoded = $this->read(self::ARTIFACTS['selection_index']);
 
         foreach ($decoded['entries'] ?? [] as $entry) {
@@ -95,9 +106,63 @@ class CuratedContext
                 continue;
             }
 
-            $this->index[$entry['slug']] = [
+            $this->shipped[(string) $entry['slug']] = [
                 'best_for' => (string) ($entry['best_for'] ?? ''),
                 'avoid_when' => (string) ($entry['avoid_when'] ?? ''),
+            ];
+        }
+
+        return $this->shipped;
+    }
+
+    public function selection_index(): array
+    {
+        if ($this->index !== null) {
+            return $this->index;
+        }
+
+        $this->index = [];
+
+        /*
+         * UC3: the site override and the filter stack on top of the shipped default HERE, which is
+         * the one place both curated readers pass through. Applying it per reader instead would be
+         * another instance of the divergence this stack keeps paying for.
+         *
+         * `shipped_index()` is kept separate rather than inlined because the admin screen needs
+         * the unmerged value: its whole job is to show what a field falls back to, and showing the
+         * merged value as the default would make an override look like something the block ships
+         * with. One read, two honest answers.
+         */
+        foreach ($this->shipped_index() as $slug => $entry) {
+            $merged = CuratedOverrides::for_block($slug, $entry);
+
+            $this->index[$slug] = [
+                'best_for' => $merged['best_for'],
+                'avoid_when' => $merged['avoid_when'],
+            ];
+        }
+
+        /*
+         * A site may curate a block the artifact does not cover, and that is the likeliest reason
+         * to reach for the override screen at all: the index carries the framework's documented
+         * blocks, so a plugin- or theme-tier block has no harvested guidance until someone writes
+         * it. Iterating only the artifact's entries would accept such an override, store it, show
+         * it in admin, and never once put it in a prompt.
+         */
+        foreach (CuratedOverrides::stored() as $slug => $_fields) {
+            if (isset($this->index[$slug])) {
+                continue;
+            }
+
+            $merged = CuratedOverrides::for_block($slug, []);
+
+            if ('' === $merged['best_for'] && '' === $merged['avoid_when']) {
+                continue;
+            }
+
+            $this->index[$slug] = [
+                'best_for' => $merged['best_for'],
+                'avoid_when' => $merged['avoid_when'],
             ];
         }
 
@@ -131,14 +196,28 @@ class CuratedContext
             ? substr($block_name, strpos($block_name, '/') + 1)
             : $block_name;
 
+        // Read through the override layer even when the artifact carries nothing for this block: a
+        // site is entitled to write configuration guidance for a block whose `.md` has none, which
+        // is in fact the likeliest reason to reach for the curation screen.
+        return CuratedOverrides::for_block(
+            $slug,
+            ['configuration' => $this->shipped_configuration_for($slug)]
+        )['configuration'];
+    }
+
+    /**
+     * UC6's shipped configuration guidance for one block, with no site override applied.
+     */
+    public function shipped_configuration_for(string $block_name): string
+    {
+        $slug = str_contains($block_name, '/')
+            ? substr($block_name, strpos($block_name, '/') + 1)
+            : $block_name;
+
         $decoded = $this->read(self::ARTIFACTS['configuration']);
         $entries = $decoded['entries'] ?? null;
 
-        if (!is_array($entries)) {
-            return '';
-        }
-
-        return trim((string) ($entries[$slug] ?? ''));
+        return is_array($entries) ? trim((string) ($entries[$slug] ?? '')) : '';
     }
 
     public function usage_notes_for(string $block_name): string
