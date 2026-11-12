@@ -199,6 +199,11 @@ class Plugin
         $mode = (string) ($input['context_mode'] ?? $defaults['context_mode']);
         $sanitized['context_mode'] = in_array($mode, ['tools', 'inline'], true) ? $mode : 'tools';
         $sanitized['allowed_roles'] = array_map('sanitize_text_field', $input['allowed_roles'] ?? $defaults['allowed_roles']);
+        // Listed here deliberately. `token_budget` shipped with a default, a docblock and a
+        // reader, and no way to set it -- there was no field AND this method dropped the key, so
+        // the documented override did nothing. A checkbox absent from the POST is `false`, which
+        // is why this reads `!empty()` rather than defaulting to the stored value.
+        $sanitized['expect_post_publish_checks'] = !empty($input['expect_post_publish_checks']);
         $sanitized['include_genesis_layouts'] = !empty($input['include_genesis_layouts']);
         $sanitized['include_editor_patterns'] = !empty($input['include_editor_patterns']);
         $sanitized['custom_system_prompt'] = wp_kses_post($input['custom_system_prompt'] ?? $defaults['custom_system_prompt']);
@@ -277,6 +282,11 @@ class Plugin
             // needs more component context than the cost model's 8,000-token target; the budget
             // degrades what the model is shown, it never refuses to generate.
             'token_budget' => 0,
+            // VP4. Off by default because the checks need a browser this plugin never launches:
+            // turning it on asserts that someone runs `gate:generated --queue` for this site. The
+            // editor reads it to tell "no report yet, one is coming" apart from "nobody is
+            // checking", which are the same absence of data and completely different situations.
+            'expect_post_publish_checks' => false,
             // 'tools' lets the model fetch field detail for the blocks it chooses; 'inline'
             // is the previous behaviour, which guesses by keyword and inlines every field.
             // A toggle rather than a constant because the OpenAI tool path is not yet verified

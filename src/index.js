@@ -5,6 +5,7 @@ import './store';
 import './editor.css';
 import Sidebar from './components/Sidebar';
 import UsageNotesPanel from './components/UsageNotesPanel';
+import CheckReportPanel from './components/CheckReportPanel';
 
 registerPlugin('timberland-ai-page-builder', {
     icon: 'layout',
@@ -21,4 +22,8 @@ registerPlugin('timberland-ai-page-builder', {
 
 registerPlugin('taipb-pattern-usage-notes', {
     render: UsageNotesPanel,
+});
+
+registerPlugin('taipb-check-report', {
+    render: CheckReportPanel,
 });

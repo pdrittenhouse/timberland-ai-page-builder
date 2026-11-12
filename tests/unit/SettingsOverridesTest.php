@@ -42,6 +42,32 @@ class SettingsOverridesTest extends TestCase
         $this->unstubWordPress();
     }
 
+    public function test_expecting_post_publish_checks_survives_a_save(): void
+    {
+        // Added with the field and the sanitiser entry at once, specifically because this file
+        // exists to record what happens when only one of the two lands.
+        $clean = Plugin::sanitize_settings(['expect_post_publish_checks' => '1']);
+
+        $this->assertArrayHasKey('expect_post_publish_checks', $clean, 'the key was dropped on save');
+        $this->assertTrue($clean['expect_post_publish_checks']);
+    }
+
+    public function test_an_unticked_checkbox_turns_the_expectation_off(): void
+    {
+        // A checkbox absent from the POST is how HTML says "off", so defaulting to the STORED
+        // value here would make the setting impossible to turn back off -- the classic inversion
+        // of the API-key rule, where an absent field must instead mean "unchanged".
+        $this->assertFalse(Plugin::sanitize_settings([])['expect_post_publish_checks']);
+        $this->assertFalse(Plugin::sanitize_settings(['expect_post_publish_checks' => ''])['expect_post_publish_checks']);
+    }
+
+    public function test_the_expectation_ships_off(): void
+    {
+        // The checks need a browser this plugin never launches, so defaulting to on would have
+        // every generated page report a pending check that nothing will ever run.
+        $this->assertFalse(Plugin::get_default_settings()['expect_post_publish_checks']);
+    }
+
     public function test_the_token_budget_survives_a_save(): void
     {
         $clean = Plugin::sanitize_settings(['token_budget' => '16000']);

@@ -305,6 +305,32 @@ $stats = $manifest_store->get_stats();
                     </td>
                 </tr>
                 <tr>
+                    <th scope="row">Post-Publish Checks</th>
+                    <td>
+                        <label>
+                            <input type="checkbox"
+                                   name="taipb_settings[expect_post_publish_checks]"
+                                   value="1"
+                                   <?php checked($settings['expect_post_publish_checks'] ?? false); ?> />
+                            Expect post-publish checks on this site
+                        </label>
+                        <p class="description">
+                            The post-publish checks (render-blocking CSS, deferred-CSS coverage,
+                            accessibility, stylesheet load order, CSS budget) need a real browser,
+                            which this plugin never launches. Instead it lists the published pages
+                            that owe a check and accepts the results, and the test suite runs them:
+                            <code>npm run gate:generated -- --queue</code>.
+                            <br><br>
+                            Tick this if someone actually runs that for this site. It changes
+                            nothing about generation &mdash; it only lets the editor tell
+                            <em>&ldquo;no report yet, one is coming&rdquo;</em> apart from
+                            <em>&ldquo;nobody is checking&rdquo;</em>, which look identical
+                            otherwise. The suite authenticates with an application password held
+                            wherever it runs; none is stored here.
+                        </p>
+                    </td>
+                </tr>
+                <tr>
                     <th scope="row">Custom System Prompt</th>
                     <td>
                         <textarea name="taipb_settings[custom_system_prompt]"

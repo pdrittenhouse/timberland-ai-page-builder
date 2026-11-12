@@ -137,6 +137,19 @@ class RestController
             ],
         ]);
 
+        register_rest_route(self::NAMESPACE, '/checks/status', [
+            'methods' => 'GET',
+            'callback' => [$this, 'handle_check_status'],
+            'permission_callback' => [$this, 'can_edit'],
+            'args' => [
+                'post_id' => [
+                    'type' => 'integer',
+                    'required' => true,
+                    'sanitize_callback' => static fn($v): int => (int) $v,
+                ],
+            ],
+        ]);
+
         register_rest_route(self::NAMESPACE, '/checks/report', [
             'methods' => 'POST',
             'callback' => [$this, 'handle_check_report'],
@@ -968,6 +981,42 @@ class RestController
         $limit = (int) $request->get_param('limit');
 
         return new \WP_REST_Response(['pending' => CheckQueue::pending($limit)], 200);
+    }
+
+    /**
+     * GET /checks/status — what the editor needs to describe one page's checks.
+     *
+     * Four states, and the editor must not collapse them. `generated: false` is a page this
+     * plugin never touched. `expected: false` is a site where nobody runs the suite, so no report
+     * will ever arrive -- reporting that as "pending" would promise something that never comes.
+     * `pending: true` is a check genuinely owed. And a stored report may be CLEAN, FAILING, or
+     * clean-but-vacuous, which is why `covered_nothing` travels separately: a spec that generates
+     * zero tests passes, so without it a run that checked nothing looks like a run that passed.
+     */
+    public function handle_check_status(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
+    {
+        $post_id = (int) $request->get_param('post_id');
+
+        if ($post_id <= 0 || !get_post($post_id)) {
+            return new \WP_Error('taipb_unknown_post', 'No such post.', ['status' => 404]);
+        }
+
+        if (!current_user_can('edit_post', $post_id)) {
+            return new \WP_Error('taipb_forbidden', 'Not allowed to read this post.', ['status' => 403]);
+        }
+
+        $settings = get_option('taipb_settings', []);
+        $report = CheckQueue::report_for($post_id);
+        $generated = '' !== (string) get_post_meta($post_id, CheckQueue::GENERATED_META, true);
+
+        return new \WP_REST_Response([
+            'generated' => $generated,
+            'expected' => !empty($settings['expect_post_publish_checks']),
+            'published' => 'publish' === get_post_status($post_id),
+            'pending' => $generated
+                && CheckQueue::needs_check($report, (string) get_post_field('post_modified_gmt', $post_id)),
+            'report' => $report,
+        ], 200);
     }
 
     /**
