@@ -42,6 +42,7 @@ class ManifestBuilder
             'blocks' => $this->collect_blocks($block_field_maps, $block_field_types, $block_field_variants),
             'layouts' => $settings['include_genesis_layouts'] ? $this->collect_genesis_layouts() : [],
             'patterns' => $settings['include_editor_patterns'] ? $this->collect_editor_patterns() : [],
+            'block_patterns' => $this->collect_block_patterns(),
             'post_types' => $this->collect_post_types(),
             'taxonomies' => $this->collect_taxonomies(),
             'nesting_rules' => [],
@@ -262,6 +263,68 @@ class ManifestBuilder
         }
 
         return $patterns;
+    }
+
+    /**
+     * Collect REGISTERED block patterns -- G1's sense 2, which reached the AI through nothing at all.
+     *
+     * ## Why this is a separate key from `patterns`
+     *
+     * `patterns` above is sense 3: `wp_block` posts a user saved in the editor, carried with their
+     * FULL markup and used as few-shot examples. This is sense 2: entries in
+     * `WP_Block_Patterns_Registry`, shipped by the framework and themes as files. Merging the two
+     * under one word is exactly the conflation G1 catalogued, and they differ in what they are FOR
+     * -- one is an example of structure, the other is a composition you can ask the server to
+     * insert verbatim.
+     *
+     * ## Why the live registry rather than the artifact on disk
+     *
+     * The framework also writes `uploads/timberland/ai-block-patterns.json` via
+     * `wp timberland block-patterns`, for consumers outside a WordPress request. This plugin IS
+     * inside one, and that file goes stale the moment a pattern is added: it was found reporting 14
+     * patterns and 3 of ours while the registry held 20 and 9. So the registry is read live and the
+     * file is only a fallback -- it cannot be the primary source for a consumer that has the real
+     * thing in memory.
+     *
+     * `BlockPatternIndex::collect()` is called rather than reimplemented because provenance is NOT
+     * derivable from the name -- the framework's own pattern is `core/query/card`, namespaced
+     * `core/` while being ours -- and a second copy of that rule would be the seventh instance of
+     * duplicated logic in this stack.
+     *
+     * ## What is deliberately absent
+     *
+     * The pattern's CONTENT. This is a selection surface, not a payload: nine patterns of markup
+     * would dwarf the prompt budget, and the model does not need the markup to ask for one by slug.
+     * `PromptBuilder` resolves a requested slug to markup server-side.
+     *
+     * @return array Pattern entries, or [] when the framework is not loaded.
+     */
+    private function collect_block_patterns(): array
+    {
+        if (class_exists('\\Timberland\\Framework\\BlockPatternIndex')) {
+            // collect() returns an ENVELOPE -- ['patterns' => rows, 'counts' => per-provenance] --
+            // not a flat list. Returning it whole put two keys where nine patterns belonged, and
+            // every count still looked plausible because the array was non-empty.
+            $collected = \Timberland\Framework\BlockPatternIndex::collect();
+
+            return is_array($collected['patterns'] ?? null) ? $collected['patterns'] : [];
+        }
+
+        // Fallback: the artifact, which may be stale. Better than nothing, and the staleness is
+        // visible because every entry carries the generated_at of the scan that wrote it.
+        $file = trailingslashit(wp_upload_dir()['basedir']) . 'timberland/ai-block-patterns.json';
+
+        if (!is_readable($file)) {
+            return [];
+        }
+
+        // Local path under uploads, never a URL — wp_remote_get() would be wrong here.
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+        $decoded = json_decode((string) file_get_contents($file), true);
+
+        return is_array($decoded) && isset($decoded['patterns']) && is_array($decoded['patterns'])
+            ? $decoded['patterns']
+            : [];
     }
 
     /**

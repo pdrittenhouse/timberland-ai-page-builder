@@ -87,6 +87,27 @@ class PromptBuilder
     private const PATTERNS_SECTION_TOKEN_BUDGET = 1100;
 
     /**
+     * Token ceiling for the REGISTERED PATTERNS catalogue.
+     *
+     * Much smaller than the section above because this carries NO markup -- a slug, a title, a
+     * description and the blocks each is made of. Nine entries measured at 540 tokens, so 600 leaves room for one or two more before
+     * anything is dropped.
+     *
+     * The markup is not here on purpose: a model does not need it to ask for a pattern by slug,
+     * and `build_selected_patterns_section()` already resolves a requested one server-side.
+     */
+    private const BLOCK_PATTERNS_SECTION_TOKEN_BUDGET = 600;
+
+    /**
+     * How many of a pattern's blocks to name before summarising the rest.
+     *
+     * Identification, not enumeration: a reader knows what `acf/accordion, acf/accordion-item` is
+     * from two names, and the full thirteen of `core/query/card` bought nothing while costing the
+     * entries below it.
+     */
+    private const BLOCKS_LISTED_PER_PATTERN = 5;
+
+    /**
      * The layout primitives, still used below to label core vs content blocks in the catalogue.
      *
      * Aliased to BlockRelevance so selection and labelling cannot drift apart -- they were two
@@ -138,6 +159,11 @@ class PromptBuilder
             $pattern_sections[] = $this->build_layouts_section($user_prompt);
             $pattern_sections[] = $this->build_patterns_section($user_prompt);
         }
+
+        // In BOTH branches: the registered catalogue is knowledge about how these compositions
+        // must be built, not an example to copy, and it stays correct when the user has already
+        // chosen a base pattern.
+        $pattern_sections[] = $this->build_block_patterns_section();
 
         $custom = $this->build_custom_prompt_section();
 
@@ -659,26 +685,7 @@ RULES;
         foreach ($pattern_ids as $pattern_id) {
             $pattern_num++;
 
-            $content = null;
-            $title = '';
-
-            if (str_starts_with($pattern_id, 'pattern_')) {
-                $id = (int) substr($pattern_id, 8);
-                foreach ($this->manifest['patterns'] ?? [] as $pattern) {
-                    if (($pattern['id'] ?? 0) === $id) {
-                        $content = $pattern['content'] ?? '';
-                        $title = $pattern['title'] ?? '';
-                        break;
-                    }
-                }
-            } elseif (str_starts_with($pattern_id, 'layout_')) {
-                $index = (int) substr($pattern_id, 7);
-                $layouts = $this->manifest['layouts'] ?? [];
-                if (isset($layouts[$index])) {
-                    $content = $layouts[$index]['content'] ?? '';
-                    $title = $layouts[$index]['name'] ?? '';
-                }
-            }
+            [$content, $title] = $this->resolve_base_pattern($pattern_id);
 
             if (!$content) {
                 continue;
@@ -704,30 +711,199 @@ RULES;
     }
 
     /**
+     * The first sentence of a description, for prompt use.
+     *
+     * Splits on a period followed by whitespace and a capital, so `acf/accordion-item` inside a
+     * sentence does not end it. Returns the whole string when there is no such break.
+     *
+     * @param  string $text Description.
+     * @return string First sentence, trimmed.
+     */
+    private function first_sentence(string $text): string
+    {
+        $text = trim($text);
+
+        if ($text === '') {
+            return '';
+        }
+
+        $parts = preg_split('/(?<=\.)\s+(?=[A-Z`])/', $text, 2);
+
+        return is_array($parts) ? trim($parts[0]) : $text;
+    }
+
+    /**
+     * Resolve a base-pattern id to its markup and title.
+     *
+     * Three id shapes, and they come from three different places:
+     *
+     *   - `pattern_<post id>`      a `wp_block` post the user saved (manifest `patterns`)
+     *   - `layout_<index>`         a Genesis layout (manifest `layouts`)
+     *   - `blockpattern_<slug>`    a REGISTERED pattern, read live from the registry
+     *
+     * The registered case reads `WP_Block_Patterns_Registry` rather than the manifest because the
+     * manifest deliberately omits pattern content -- it is a selection surface. The registry has
+     * the markup already in memory, so there is nothing to carry.
+     *
+     * Extracted because this chain existed verbatim in two methods. Adding a third id shape to one
+     * copy and not the other is the failure this stack has hit repeatedly: the capability arrives,
+     * one call site gets it, and every test still passes.
+     *
+     * @param  string $pattern_id Prefixed id.
+     * @return array{0: ?string, 1: string} Content (null when unresolvable) and title.
+     */
+    private function resolve_base_pattern(string $pattern_id): array
+    {
+        if (str_starts_with($pattern_id, 'pattern_')) {
+            $id = (int) substr($pattern_id, 8);
+
+            foreach ($this->manifest['patterns'] ?? [] as $pattern) {
+                if (($pattern['id'] ?? 0) === $id) {
+                    return [$pattern['content'] ?? '', (string) ($pattern['title'] ?? '')];
+                }
+            }
+
+            return [null, ''];
+        }
+
+        if (str_starts_with($pattern_id, 'layout_')) {
+            $index = (int) substr($pattern_id, 7);
+            $layouts = $this->manifest['layouts'] ?? [];
+
+            return isset($layouts[$index])
+                ? [$layouts[$index]['content'] ?? '', (string) ($layouts[$index]['name'] ?? '')]
+                : [null, ''];
+        }
+
+        if (str_starts_with($pattern_id, 'blockpattern_')) {
+            $slug = substr($pattern_id, 13);
+
+            if ($slug === '' || !class_exists('\\WP_Block_Patterns_Registry')) {
+                return [null, ''];
+            }
+
+            $pattern = \WP_Block_Patterns_Registry::get_instance()->get_registered($slug);
+
+            return is_array($pattern)
+                ? [$pattern['content'] ?? '', (string) ($pattern['title'] ?? '')]
+                : [null, ''];
+        }
+
+        return [null, ''];
+    }
+
+    /**
+     * The registered block patterns, as a catalogue of pre-verified compositions.
+     *
+     * ## Why a model needs this even though it can emit nesting itself
+     *
+     * A pattern is not a convenience here. A model that knows every block and every `parent` rule
+     * will still emit compositions that produce NOTHING, because validity and working are different
+     * things in this stack:
+     *
+     *   - `acf/slider` with three `acf/slide` children renders ZERO bytes unless its `slider` field
+     *     is set. `slider.twig` branches on that field three ways with no `else`, and the field has
+     *     no default.
+     *   - `acf/tab` panels silently lose the class their script needs unless the PARENT carries an
+     *     explicit `type`, because the child reads the parent's raw attributes, where an ACF default
+     *     never appears, while the parent's own template reads `fields.*`, where it does.
+     *
+     * Both were found by rendering, after registration had passed. So what the catalogue carries is
+     * not structure -- the model can infer that -- but the non-obvious field values that separate
+     * markup that validates from markup that renders.
+     *
+     * ## Core's patterns are excluded
+     *
+     * Eleven of the registered patterns are WordPress's own (`query-*`, `navigation-overlay-*`) and
+     * have nothing to do with this design system. Handing a model eleven irrelevant options and nine
+     * useful ones is worse than handing it none, so only `provenance === 'registered'` is listed.
+     * This is why the framework's index labels provenance at all.
+     *
+     * @return string Empty when nothing of ours is registered.
+     */
+    private function build_block_patterns_section(): string
+    {
+        $patterns = array_values(array_filter(
+            $this->manifest['block_patterns'] ?? [],
+            static fn (array $p): bool => ($p['provenance'] ?? '') === 'registered'
+        ));
+
+        if ($patterns === []) {
+            return '';
+        }
+
+        $output = "# REGISTERED PATTERNS\n\n";
+        $output .= "These compositions are registered by the theme and have been verified to RENDER, "
+            . "not merely to validate. Where one covers what you are building, follow its structure and its "
+            . "field values rather than assembling the blocks yourself -- several containers in this system "
+            . "render nothing at all when a required field is left unset.\n\n";
+        $output .= "To start from one instead of describing it, the request can name it as a base pattern "
+            . "using the id `blockpattern_<slug>`.\n\n";
+
+        $spent = $this->estimate_tokens($output);
+        $listed = 0;
+        $dropped = 0;
+
+        foreach ($patterns as $pattern) {
+            $slug = (string) ($pattern['name'] ?? '');
+            $title = (string) ($pattern['title'] ?? '');
+            $description = (string) ($pattern['description'] ?? '');
+            $blocks = (array) ($pattern['blocks_used'] ?? []);
+
+            $entry = "- **{$slug}** — {$title}";
+
+            // First sentence only. The file-level descriptions go on to explain the `parent`
+            // constraint for whoever reads the pattern file, and the prompt already carries every
+            // parent rule in its own NESTING section -- paying for it twice cost three patterns
+            // their place in this list.
+            $first = $this->first_sentence($description);
+            if ($first !== '') {
+                $entry .= ". {$first}";
+            }
+            if ($blocks !== []) {
+                // Capped. `core/query/card` alone lists THIRTEEN blocks, which cost more of the
+                // budget than the three patterns the catalogue exists for -- the ones that render
+                // nothing without it -- and truncation here is alphabetical, so they were the ones
+                // being dropped. The first few names identify a composition; the tail does not.
+                $shown = array_slice($blocks, 0, self::BLOCKS_LISTED_PER_PATTERN);
+                $entry .= "\n  Blocks: `" . implode('`, `', $shown) . '`';
+
+                $hidden = count($blocks) - count($shown);
+                if ($hidden > 0) {
+                    $entry .= " (+{$hidden} more)";
+                }
+            }
+            $entry .= "\n";
+
+            $cost = $this->estimate_tokens($entry);
+
+            // Truncate rather than overrun: the blocks section takes what is left of the allowance,
+            // and an overrun here is taken out of the CONTRACT the model has to satisfy.
+            if ($spent + $cost > self::BLOCK_PATTERNS_SECTION_TOKEN_BUDGET) {
+                $dropped = count($patterns) - $listed;
+                break;
+            }
+
+            $output .= $entry;
+            $spent += $cost;
+            $listed++;
+        }
+
+        // Say so when the budget cut the list. A silent truncation here already dropped the three
+        // patterns this section exists for, and nothing in the prompt or the logs showed it.
+        if ($dropped > 0) {
+            $output .= "\n({$dropped} further registered pattern(s) not listed here.)\n";
+        }
+
+        return $output;
+    }
+
+    /**
      * Build section for a user-selected pattern/layout to use as the base.
      */
     private function build_selected_pattern_section(string $pattern_id): string
     {
-        $content = null;
-        $title = '';
-
-        if (str_starts_with($pattern_id, 'pattern_')) {
-            $id = (int) substr($pattern_id, 8);
-            foreach ($this->manifest['patterns'] ?? [] as $pattern) {
-                if (($pattern['id'] ?? 0) === $id) {
-                    $content = $pattern['content'] ?? '';
-                    $title = $pattern['title'] ?? '';
-                    break;
-                }
-            }
-        } elseif (str_starts_with($pattern_id, 'layout_')) {
-            $index = (int) substr($pattern_id, 7);
-            $layouts = $this->manifest['layouts'] ?? [];
-            if (isset($layouts[$index])) {
-                $content = $layouts[$index]['content'] ?? '';
-                $title = $layouts[$index]['name'] ?? '';
-            }
-        }
+        [$content, $title] = $this->resolve_base_pattern($pattern_id);
 
         if (!$content) {
             return '';
