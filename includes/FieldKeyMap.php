@@ -79,6 +79,21 @@ class FieldKeyMap
 
         // For each group that targets a block, build the field key map
         foreach ($this->group_cache as $group_key => $group) {
+            // `active === false` is excluded here, not in `load_relevant_groups()`. ACF does not
+            // serve a deactivated group to any block, by wildcard or by name -- `Block: Buttons`
+            // is `"active": false` and has been since it was added, yet this loop fed its fields
+            // into every block's map regardless. Measured before this guard: 154 of a block's 167
+            // keys were from that one deactivated group.
+            //
+            // The guard sits HERE, not at load time, because `resolve_clone()` looks up
+            // `$this->group_cache`/`$this->field_cache` directly by key for cloning, and most
+            // `Module: *` groups are deactivated BY DESIGN -- they exist only to be cloned, never
+            // to be served to a block on their own. Filtering them out of the cache would break
+            // every clone that resolves through one.
+            if (($group['active'] ?? true) === false) {
+                continue;
+            }
+
             $block_names = $this->extract_block_targets($group);
 
             foreach ($block_names as $block_name) {
