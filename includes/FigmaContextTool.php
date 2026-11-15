@@ -9,6 +9,25 @@ if (!defined('ABSPATH')) {
 /**
  * How a generation explores a Figma file: list the candidate pages, then fetch one.
  *
+ * **NOT WIRED. Nothing constructs this outside its own tests.** Everything below describes how it
+ * behaves when driven, not something happening in a live flow today: no REST route builds one, no
+ * prompt carries its definitions, and nothing references `list_figma_pages` or `get_figma_page`.
+ * Its sibling {@see BlockContextTool} — same shape, same budget contract — is constructed in
+ * `RestController` and `MarkupGenerator`; this one in neither.
+ *
+ * Stated here because its absence is invisible from the inside and the present tense below reads as
+ * live. Two things were asserted off that reading and both were wrong: that it duplicates the
+ * review's metered Figma read (it cannot, it never runs), and that it is the live counterparty
+ * justifying {@see FigmaReview::DEFAULT_DEPTH}'s divergence (the depth-2 side has no live consumer
+ * at all — `FigmaReview` is the only production caller of `FigmaStructure::pages()` and it always
+ * passes a depth explicitly).
+ *
+ * It is a plausible entry point for AD7, which is why it is kept rather than deleted. Wiring it
+ * makes two things true that are not true now: the depth divergence becomes a live divergence, and
+ * this tool and the review become two consumers of one metered file. Share the PAYLOAD at that
+ * point, not the derived candidates — `fetch_node()` takes no depth and returns the whole tree, so
+ * the fetch is shareable while the projections are not.
+ *
  * **The same division as the block catalogue.** Enumerate mechanically, choose semantically. The
  * server cannot decide what a page design is -- names can be `Frame 19` twice and geometry cannot
  * separate a 683x582 design from a 683x582 mood board -- so it surfaces candidates with their
@@ -19,9 +38,10 @@ if (!defined('ABSPATH')) {
  * then `get` at least once each; fetching twice would double a slow, rate-limited, metered call
  * for no gain. The response is held for the life of the tool.
  *
- * Both results are charged against the same {@see PromptBudget} as block context, because they
- * compete for the same prompt. A page that cannot be afforded is declared unavailable by name
- * rather than silently omitted -- the same rule as a withheld block, for the same reason.
+ * Both results are charged against the same {@see PromptBudget} as block context, so that they
+ * would compete for the same prompt once this is wired into one. A page that cannot be afforded is
+ * declared unavailable by name rather than silently omitted -- the same rule as a withheld block,
+ * for the same reason.
  */
 class FigmaContextTool
 {

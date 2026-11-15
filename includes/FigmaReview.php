@@ -66,6 +66,13 @@ class FigmaReview
      * evidence and benefits from seeing nested candidates; an operator is scanning for the frame
      * they already recognise. Different audiences, so the divergence is the point rather than
      * drift -- and a caller who wants the deeper view can still ask for it.
+     *
+     * **That second audience is not live.** `FigmaContextTool` is constructed nowhere outside its
+     * own tests, and this class is the only production caller of `FigmaStructure::pages()` -- always
+     * with an explicit depth. So `pages()`' own default of 2 currently serves no running code, and
+     * the sentence above describes the divergence the two WOULD have rather than one in effect. Read
+     * as live it invites the opposite conclusion: that a depth-0 reading here can be handed to a
+     * depth-2 caller, which it cannot. Pinned by `FigmaReviewDepthDivergenceTest`.
      */
     public const DEFAULT_DEPTH = 0;
 
@@ -75,12 +82,24 @@ class FigmaReview
     /**
      * How long a derived projection stays usable.
      *
-     * An hour is a compromise between the two real costs. Too short and an operator reviewing a
+     * An hour was a compromise between the two real costs. Too short and an operator reviewing a
      * handful of pages re-reads the file and pays the cost-based limit again; too long and a
      * designer's update is invisible with no obvious reason why. `$refresh` exists for the second
      * case, so the TTL only has to cover an ordinary review session.
+     *
+     * **Raised to a day once the staleness was no longer invisible.** The hour was sized against
+     * the second cost, and that cost is now carried by the UI rather than by the clock: a cached
+     * reading renders "Showing a saved reading of this frame" with a one-click *Read it again from
+     * Figma*, so a designer's update is one control away from being picked up instead of something
+     * an operator has to suspect. What the hour was protecting against was an operator who could not
+     * tell, and that operator no longer exists.
+     *
+     * The cost it was trading against did not shrink, which is the other half of the decision: a
+     * measured 429 on this account carried `retry-after: 395785` (4.6 days) and roughly eight reads
+     * of one 3.9 MB file exhausted the budget. An hour covers a review session; it does not cover a
+     * design-to-component session that spans a working day and reads the same frame at both ends.
      */
-    public const CACHE_TTL = 3600;
+    public const CACHE_TTL = DAY_IN_SECONDS;
 
     private const CACHE_PREFIX = 'taipb_figma_';
 
@@ -198,6 +217,50 @@ class FigmaReview
         set_transient($cache_key, $result, self::CACHE_TTL);
 
         return $result;
+    }
+
+    /**
+     * The transient prefix, for the one caller that must match keys it cannot compute.
+     *
+     * Exposed only because the keys are hashed: `FigmaCacheCommand`'s `--all` has to prefix-match in
+     * SQL, since an md5 of file|node|depth|shape cannot be reversed into "which frames are cached?".
+     * Everything else addresses the cache through {@see forget()} or {@see inspect()} so the key
+     * shape stays private.
+     */
+    public static function cache_prefix(): string
+    {
+        return self::CACHE_PREFIX;
+    }
+
+    /**
+     * Forget every cached reading of one frame, across all depths.
+     *
+     * `$refresh` already covers "the design changed" for somebody sitting in the editor. This covers
+     * the cases where nobody is: a designer says the file moved on and an operator is not mid-review,
+     * a deploy changes what the projection should contain, or a reading is suspected bad and the
+     * cheap first move is to drop it rather than reason about it.
+     *
+     * Walks every depth rather than taking one, because depth is part of the key and a caller
+     * flushing "this frame" means the frame, not one reading of it. That is MAX_DEPTH + 1 deletes,
+     * all local -- no Figma call, which is the point: flushing must never itself cost rate limit.
+     *
+     * @return int how many cached readings were actually dropped
+     */
+    public static function forget(FigmaUrl $ref): int
+    {
+        $dropped = 0;
+
+        for ($depth = 0; $depth <= self::MAX_DEPTH; $depth++) {
+            $key = self::cache_key($ref, $depth);
+
+            // Checked before deleting so the count means "readings dropped" rather than "deletes
+            // attempted" -- an operator told "flushed 5" when the cache was empty learns nothing.
+            if (get_transient($key) !== false && delete_transient($key)) {
+                $dropped++;
+            }
+        }
+
+        return $dropped;
     }
 
     /**

@@ -42,6 +42,20 @@ class Plugin
 
         // Pattern meta (usage notes on wp_block post type)
         add_action('init', [$this, 'register_pattern_meta']);
+
+        /*
+         * WP-CLI commands, loaded from OUTSIDE `includes/`.
+         *
+         * Registered at construction rather than on a hook because WP-CLI loads the plugin and then
+         * runs the command; there is no later action to wait for. `require`d rather than referenced
+         * because WP-CLI is not a dependency of this plugin: a `WP_CLI::` call inside the analysed
+         * set is an unknown class to PHPStan, and the rule here is to fix that rather than baseline
+         * it. The decisions live in FigmaCacheCommand, which is analysed and tested; only the
+         * printing is out there.
+         */
+        if (defined('WP_CLI') && constant('WP_CLI')) {
+            require_once TAIPB_PLUGIN_DIR . 'cli/figma-flush.php';
+        }
     }
 
     public function activate(): void
