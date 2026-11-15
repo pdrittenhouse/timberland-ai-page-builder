@@ -284,8 +284,14 @@ class FigmaReview
             $ref->file_key(),
             $ref->node_id(),
             (string) $depth,
-            // The shape of what we store, not just the identity of what we read.
+            // The shape of what we store, not just the identity of what we read -- and TWO tiers
+            // shape it, so both versions compose. `self::SHAPE_VERSION` covers this plugin's own
+            // envelope; `FigmaStructure::SHAPE_VERSION` covers the framework's projection sitting
+            // inside it. Keying on only one of them is how a reading cached before the framework
+            // grew its styling keys would still be served to a consumer that expects them, which
+            // is the same trap version 3 below records for `chrome`, one tier further out.
             'v' . self::SHAPE_VERSION,
+            'f' . FigmaStructure::SHAPE_VERSION,
         ]));
     }
 }
