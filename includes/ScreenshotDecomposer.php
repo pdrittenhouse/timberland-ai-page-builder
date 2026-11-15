@@ -8,6 +8,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+use Timberland\Framework\FigmaDecomposer;
+
 /**
  * FG1's reduced-fidelity input: a screenshot, for the client who has no Figma file.
  *

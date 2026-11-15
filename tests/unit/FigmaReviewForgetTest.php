@@ -3,9 +3,9 @@ namespace TimberlandAIPageBuilder\Tests\Unit;
 
 use Brain\Monkey\Functions;
 use PHPUnit\Framework\TestCase;
-use TimberlandAIPageBuilder\FigmaClient;
+use Timberland\Framework\FigmaClient;
 use TimberlandAIPageBuilder\FigmaReview;
-use TimberlandAIPageBuilder\FigmaUrl;
+use Timberland\Framework\FigmaUrl;
 use TimberlandAIPageBuilder\Tests\Fixture\WordPressStubs;
 
 /**

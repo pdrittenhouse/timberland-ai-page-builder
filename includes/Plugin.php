@@ -44,6 +44,14 @@ class Plugin
         add_action('init', [$this, 'register_pattern_meta']);
 
         /*
+         * The Figma layer's parent-theme requirement, stated at page load rather than only when a
+         * Figma request is refused. Registered on `admin_init` because the check is `class_exists()`
+         * against the framework, which the THEME autoloads -- at plugin-load time the theme has not
+         * booted yet and the answer would always be "absent".
+         */
+        add_action('admin_init', [FigmaSupport::class, 'register_admin_notice']);
+
+        /*
          * WP-CLI commands, loaded from OUTSIDE `includes/`.
          *
          * Registered at construction rather than on a hook because WP-CLI loads the plugin and then

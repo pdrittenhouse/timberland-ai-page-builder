@@ -6,6 +6,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+use Timberland\Framework\FigmaUrl;
+
 /**
  * The logic behind `wp taipb figma-flush` — drop cached Figma readings without touching Figma.
  *
@@ -41,6 +43,10 @@ class FigmaCacheCommand
      */
     public static function flush(?string $url, bool $all = false): array
     {
+        if (!FigmaSupport::available()) {
+            return ['ok' => false, 'message' => FigmaSupport::unavailable_error()->get_error_message()];
+        }
+
         $url = trim((string) $url);
 
         if ($all && $url !== '') {

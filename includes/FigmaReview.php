@@ -6,6 +6,12 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+use Timberland\Framework\ChromeHints;
+use Timberland\Framework\FigmaDecomposer;
+use Timberland\Framework\FigmaStructure;
+use Timberland\Framework\FigmaClient;
+use Timberland\Framework\FigmaUrl;
+
 /**
  * What an operator is shown before a Figma design becomes blocks.
  *
@@ -141,7 +147,7 @@ class FigmaReview
         bool $refresh = false
     ) {
         $depth = max(0, min(self::MAX_DEPTH, $depth));
-        $client = $client ?? new FigmaClient();
+        $client = $client ?? new FigmaClient(FigmaCredentials::get());
         $cache_key = self::cache_key($ref, $depth);
 
         if (!$refresh) {

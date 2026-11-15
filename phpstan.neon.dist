@@ -36,6 +36,21 @@ parameters:
     scanFiles:
         - vendor/php-stubs/acf-pro-stubs/acf-pro-stubs.php
 
+    # The framework's Figma layer. `FigmaStructure`, `ChromeHints`, `FigmaUrl`, `FigmaDecomposer`
+    # and `FigmaClient` are `Timberland\Framework\*` and live in the theme's `vendor/`, which this
+    # plugin does not and must not require: a second copy of the framework under the plugin's own
+    # vendor could shadow the theme's at runtime, which is a worse problem than the duplication the
+    # relocation removed.
+    #
+    # SCANNED, not analysed — these files are the framework's to check, and it checks them. Without
+    # this every `$ref->file_key()` in the Figma layer reports as a call on an unknown class.
+    #
+    # The path is relative and names the theme, which is the one brittle thing here: a differently
+    # named parent theme needs it changed. `tests/bootstrap.php` discovers the same directory by
+    # glob instead, because it can; neon cannot.
+    scanDirectories:
+        - ../../themes/timberland-starter/vendor/pdrittenhouse/timberland/src
+
     # This codebase is heavily docblocked. Trusting annotations over inference would suppress
     # exactly the mismatches worth finding.
     treatPhpDocTypesAsCertain: false

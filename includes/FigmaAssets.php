@@ -6,6 +6,9 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+use Timberland\Framework\FigmaClient;
+use Timberland\Framework\FigmaUrl;
+
 /**
  * Bring a Figma frame's own images into the media library, so a generated page can use them.
  *
@@ -71,7 +74,7 @@ class FigmaAssets
 
     public function __construct(?FigmaClient $client = null)
     {
-        $this->client = $client ?? new FigmaClient();
+        $this->client = $client ?? new FigmaClient(FigmaCredentials::get());
     }
 
     /**

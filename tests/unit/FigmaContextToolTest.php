@@ -5,7 +5,7 @@ namespace TimberlandAIPageBuilder\Tests\Unit;
 use Brain\Monkey\Functions;
 use PHPUnit\Framework\TestCase;
 use TimberlandAIPageBuilder\FigmaContextTool;
-use TimberlandAIPageBuilder\FigmaUrl;
+use Timberland\Framework\FigmaUrl;
 use TimberlandAIPageBuilder\PromptBudget;
 use TimberlandAIPageBuilder\Redact;
 use TimberlandAIPageBuilder\Tests\Fixture\WordPressStubs;
@@ -54,7 +54,7 @@ class FigmaContextToolTest extends TestCase
         return new FigmaContextTool(
             $ref,
             $budget ?? new PromptBudget([], 8000),
-            new \TimberlandAIPageBuilder\FigmaClient('figd_testtoken_longenough')
+            new \Timberland\Framework\FigmaClient('figd_testtoken_longenough')
         );
     }
 

@@ -3,7 +3,7 @@ namespace TimberlandAIPageBuilder\Tests\Unit;
 
 use Brain\Monkey\Functions;
 use PHPUnit\Framework\TestCase;
-use TimberlandAIPageBuilder\FigmaStructure;
+use Timberland\Framework\FigmaStructure;
 use TimberlandAIPageBuilder\FigmaReview;
 use TimberlandAIPageBuilder\Tests\Fixture\WordPressStubs;
 

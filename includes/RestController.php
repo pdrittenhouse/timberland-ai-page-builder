@@ -6,6 +6,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+use Timberland\Framework\FigmaUrl;
+
 /**
  * REST API endpoints for the AI Page Builder.
  */
@@ -882,6 +884,10 @@ class RestController
      */
     public function handle_figma_import_assets(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
     {
+        if (!FigmaSupport::available()) {
+            return FigmaSupport::unavailable_error();
+        }
+
         if (!FigmaCredentials::is_configured()) {
             return new \WP_Error(
                 'taipb_figma_no_token',
@@ -1182,6 +1188,11 @@ class RestController
      */
     public function handle_figma_inspect(\WP_REST_Request $request): \WP_REST_Response|\WP_Error
     {
+        // Before the credential check, because a missing reader is not the operator's token problem.
+        if (!FigmaSupport::available()) {
+            return FigmaSupport::unavailable_error();
+        }
+
         if (!FigmaCredentials::is_configured()) {
             return new \WP_Error(
                 'taipb_figma_no_token',

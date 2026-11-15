@@ -6,6 +6,10 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+use Timberland\Framework\FigmaStructure;
+use Timberland\Framework\FigmaClient;
+use Timberland\Framework\FigmaUrl;
+
 /**
  * How a generation explores a Figma file: list the candidate pages, then fetch one.
  *
@@ -66,7 +70,7 @@ class FigmaContextTool
     {
         $this->ref = $ref;
         $this->budget = $budget;
-        $this->client = $client ?? new FigmaClient();
+        $this->client = $client ?? new FigmaClient(FigmaCredentials::get());
     }
 
     /**
